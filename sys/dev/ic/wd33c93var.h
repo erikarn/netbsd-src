@@ -251,7 +251,7 @@ struct wd33c93_softc {
 #define DEBUG_SYNC	0x800
 
 #ifdef DEBUG
-extern int wd33c93_debug_flags;
+extern int wd33c93_debug;
 #define SBIC_DEBUG(level, str)						\
 	do {								\
 		if (wd33c93_debug & __CONCAT(DEBUG_,level))		\

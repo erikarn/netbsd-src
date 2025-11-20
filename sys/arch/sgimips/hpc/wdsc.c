@@ -65,6 +65,9 @@ __KERNEL_RCSID(0, "$NetBSD: wdsc.c,v 1.35 2018/09/02 16:18:50 tsutsui Exp $");
 #include <opt_kgdb.h>
 #include <sys/kgdb.h>
 
+
+#define WDSC_MAX_XFER 4096
+
 struct wdsc_softc {
 	struct wd33c93_softc	sc_wd33c93; /* Must be first */
 	struct evcnt		sc_intrcnt; /* Interrupt counter */
@@ -83,6 +86,7 @@ void	wdsc_attach(device_t, device_t, void *);
 CFATTACH_DECL_NEW(wdsc, sizeof(struct wdsc_softc),
     wdsc_match, wdsc_attach, NULL, NULL);
 
+void	wdsc_minphys(struct buf *bp);
 int	wdsc_dmasetup(struct wd33c93_softc *, void ** ,size_t *, int, size_t *);
 int	wdsc_dmago(struct wd33c93_softc *);
 void	wdsc_dmastop(struct wd33c93_softc *);
@@ -131,6 +135,14 @@ wdsc_match(device_t parent, cfdata_t cf, void *aux)
 	return 0;
 }
 
+void
+wdsc_minphys(struct buf *bp)
+{
+	if (bp->b_bcount > WDSC_MAX_XFER)
+		bp->b_bcount = WDSC_MAX_XFER;
+	minphys(bp);
+}
+
 /*
  * Attach the wdsc driver
  */
@@ -175,7 +187,7 @@ wdsc_attach(device_t parent, device_t self, void *aux)
 	sc->sc_reset	= wdsc_reset;
 
 	sc->sc_adapter.adapt_request = wd33c93_scsi_request;
-	sc->sc_adapter.adapt_minphys = minphys;
+	sc->sc_adapter.adapt_minphys = wdsc_minphys; // minphys;
 
 	sc->sc_id = 0;					/* Host ID = 0 */
 	sc->sc_clkfreq = 200;				/* 20MHz */
@@ -219,8 +231,8 @@ wdsc_dmasetup(struct wd33c93_softc *sc, void **addr, size_t *len, int datain,
 		if ((err = bus_dmamap_load(wsc->sc_dmat, wsc->sc_dmamap,
 		    vaddr, count, NULL /* kernel address */,
 		    BUS_DMA_NOWAIT)) != 0)
-			panic("%s: bus_dmamap_load err=%d",
-			    device_xname(sc->sc_dev), err);
+			panic("%s: %s: bus_dmamap_load err=%d, vaddr=%p, count=%d",
+			    device_xname(sc->sc_dev), __func__, err, vaddr, count);
 
 		hpcdma_sglist_create(dsc, wsc->sc_dmamap);
 		wsc->sc_flags |= WDSC_DMA_MAPLOADED;

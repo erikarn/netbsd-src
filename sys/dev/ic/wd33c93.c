@@ -97,6 +97,8 @@ __KERNEL_RCSID(0, "$NetBSD: wd33c93.c,v 1.33 2024/02/09 22:08:34 andvar Exp $");
 
 #include <sys/bus.h>
 
+#define DEBUG
+
 #include <dev/ic/wd33c93reg.h>
 #include <dev/ic/wd33c93var.h>
 
@@ -167,7 +169,7 @@ int	wd33c93_notags		= 0;	/* No Tags */
 
 #define QPRINTF(a)	SBIC_DEBUG(MISC, a)
 
-int	wd33c93_debug	= 0;		/* Debug flags */
+int	wd33c93_debug	= 0x0;		/* Debug flags */
 
 void	wd33c93_print_csr (u_char);
 void	wd33c93_hexdump (u_char *, int);
@@ -611,9 +613,14 @@ wd33c93_scsi_request(struct scsipi_channel *chan, scsipi_adapter_req_t req, void
 			return;
 
 		if (wd33c93_poll(sc, acb)) {
+			scsipi_printaddr(periph);
+			printf("first timeout\n");
 			wd33c93_timeout(acb);
-			if (wd33c93_poll(sc, acb)) /* 2nd retry for ABORT */
+			if (wd33c93_poll(sc, acb)) { /* 2nd retry for ABORT */
+				scsipi_printaddr(periph);
+				printf("second timeout\n");
 				wd33c93_timeout(acb);
+			}
 		}
 		return;
 
@@ -795,6 +802,7 @@ wd33c93_scsidone(struct wd33c93_softc *sc, struct wd33c93_acb *acb, int status)
 	xs->resid = acb->dleft;
 
 	if (xs->error == XS_NOERROR) {
+		wd33c93_debug = 0; /* XXX */
 		switch (xs->status) {
 		case SCSI_CHECK:
 		case SCSI_TERMINATED:
@@ -884,7 +892,7 @@ wd33c93_wait(struct wd33c93_softc *sc, u_char until, int timeo, int line)
 			printf("wd33c93_wait: TIMEO @%d with asr=x%x csr=x%x\n",
 			    line, val, csr);
 #if defined(DDB) && defined(DEBUG)
-			Debugger();
+//			Debugger();
 #endif
 			return(val); /* Maybe I should abort */
 			break;
@@ -935,6 +943,19 @@ wd33c93_abort(struct wd33c93_softc *sc, struct wd33c93_acb *acb,
 		scsipi_printaddr(acb->xs->xs_periph);
 		printf("sending ABORT command\n");
 
+		/*
+		 * XXX TODO: we really should check if the controller is idle,
+		 * eg from a reset, and figure out what to do here.
+		 */
+		if (sc->sc_state == SBIC_IDLE) {
+			printf(" (controller IDLE) ");
+		}
+
+		/*
+		 * XXX TODO: what if it's in ERROR state but the
+		 * hardware says it's in reset and is ready?
+		 */
+
 		WAIT_CIP(sc);
 		SET_SBIC_cmd(sc, SBIC_CMD_ABORT);
 		WAIT_CIP(sc);
@@ -946,13 +967,50 @@ wd33c93_abort(struct wd33c93_softc *sc, struct wd33c93_acb *acb,
 			/*
 			 * ok, get more drastic..
 			 */
+#if 0
+			/* Do i need to add a DMA stop here? */
+			if (sc->sc_flags & SBICF_INDMA) {
+				printf(" (stop DMA) ");
+			}
+
+			wd33c93_dma_stop(sc);
+#endif
 			printf("Resetting bus\n");
 			wd33c93_reset(sc);
+
+			/*
+			 * Note: The bus is reset; the command needs to be
+			 * rescheduled otherwise we'll just get another
+			 * timeout.
+			 *
+			 * So, put the command back on the queue and then
+			 * the caller can call sched() to reschedule it.
+			 */
+			wd33c93_dequeue(sc, sc->sc_nexus);
+			TAILQ_INSERT_HEAD(&sc->ready_list, sc->sc_nexus, chain);
+			sc->sc_nexus->flags |= ACB_READY;
+			sc->sc_nexus = NULL;
+
+			return (SBIC_STATE_ERROR);
 		} else {
 			printf("sending DISCONNECT to target\n");
 			SET_SBIC_cmd(sc, SBIC_CMD_DISC);
 			WAIT_CIP(sc);
 
+			/*
+			 * This is looping where asr=0, csr=1.
+			 * csr=1 means SBIC_CSR_RESET_AM, disconnected.
+			 * asr=0 means it's doing nothing.
+			 * So here the controller is reset but
+			 * we're still trying to send that disconnect.
+			 *
+			 * A disconnect was sent to the target,
+			 * but the controller is in the wrong state
+			 * and we're stuck here.
+			 *
+			 * This phase also has no timeout either, it'll
+			 * loop forever retrying.
+			 */
 			do {
 				SBIC_WAIT (sc, SBIC_ASR_INT, 0);
 				GET_SBIC_asr(sc, asr);
@@ -960,6 +1018,8 @@ wd33c93_abort(struct wd33c93_softc *sc, struct wd33c93_acb *acb,
 				SBIC_DEBUG(MISC, ("csr: 0x%02x, asr: 0x%02x\n",
 					       csr, asr));
 			} while ((csr != SBIC_CSR_DISC) &&
+			    (csr != SBIC_CSR_RESET) &&
+			    (csr != SBIC_CSR_RESET_AM) &&
 			    (csr != SBIC_CSR_DISC_1) &&
 			    (csr != SBIC_CSR_CMD_INVALID));
 		}
@@ -1331,7 +1391,7 @@ wd33c93_go(struct wd33c93_softc *sc, struct wd33c93_acb *acb)
 	if (dmaok == 0)
 		sc->sc_flags |= SBICF_NODMA;
 
-	SBIC_DEBUG(DMA, ("wd33c93_go dmago:%d(tcnt=%zx) dmaok=%dx\n",
+	SBIC_DEBUG(DMA, ("wd33c93_go dmago:%d(tcnt=%zx) dmaok=%d\n",
 		       sc->target, sc->sc_tcnt, dmaok));
 
 	/* select the SCSI bus (it's an error if bus isn't free) */
@@ -1362,7 +1422,7 @@ wd33c93_go(struct wd33c93_softc *sc, struct wd33c93_acb *acb)
 	} while (sc->sc_state == SBIC_CONNECTED &&
 	    	 asr & (SBIC_ASR_INT|SBIC_ASR_LCI));
 
-	QPRINTF(("> done i=%d stat=%02x\n", i, sc->sc_status));
+	QPRINTF(("> done i=%d stat=0x%02x state=%d asr=0x%08x\n", i, sc->sc_status, sc->sc_state, asr));
 
 	if (i == SBIC_STATE_DONE) {
 		if (sc->sc_status == STATUS_UNKNOWN) {
@@ -1406,7 +1466,8 @@ wd33c93_intr(struct wd33c93_softc *sc)
 	} while (sc->sc_state == SBIC_CONNECTED &&
 	    	 asr & (SBIC_ASR_INT|SBIC_ASR_LCI));
 
-	SBIC_DEBUG(INTS, ("intr done. state=%d, asr=0x%02x\n", i, asr));
+	SBIC_DEBUG(INTS, ("intr done. state=%d, asr=0x%02x\n",
+	    sc->sc_state, asr));
 
 	return(1);
 }
@@ -2043,6 +2104,9 @@ wd33c93_nextstate(struct wd33c93_softc *sc, struct wd33c93_acb	*acb, u_char csr,
 		++sc->sc_tinfo[sc->target].dconns;
 		++sc->sc_disc;
 
+		/* Need to complete the IO with a failure */
+		wd33c93_scsidone(sc, acb, SCSI_TERMINATED);
+
 		if (acb->xs->xs_control & XS_CTL_POLL || wd33c93_nodisc)
 			return SBIC_STATE_DISCONNECT;
 
@@ -2144,7 +2208,7 @@ wd33c93_nextstate(struct wd33c93_softc *sc, struct wd33c93_acb	*acb, u_char csr,
 		printf("next: aborting asr 0x%02x csr 0x%02x\n", asr, csr);
 
 #ifdef DDB
-		Debugger();
+//		Debugger();
 #endif
 
 		SET_SBIC_control(sc, SBIC_CTL_EDI | SBIC_CTL_IDI);
@@ -2287,9 +2351,11 @@ wd33c93_timeout(void *arg)
 
 	GET_SBIC_asr(sc, asr);
 
+	wd33c93_debug = 0xffff; /* XXX */
+
 	scsipi_printaddr(periph);
 	printf("%s: timed out; asr=0x%02x [acb %p (flags 0x%x, dleft %zx)], "
-	    "<state %d, nexus %p, resid %lx, msg(q %x,o %x)>",
+	    "<state %d, nexus %p, resid %lx, msg(q %x,o %x)>\n",
 	    device_xname(sc->sc_dev), asr, acb, acb->flags, acb->dleft,
 	    sc->sc_state, sc->sc_nexus, (long)sc->sc_dleft,
 	    sc->sc_msgpriq, sc->sc_msgout);
@@ -2298,11 +2364,14 @@ wd33c93_timeout(void *arg)
 		/* We need to service a missed IRQ */
 		wd33c93_intr(sc);
 	} else {
-		(void) wd33c93_abort(sc, sc->sc_nexus, "timeout");
+		(void) wd33c93_abort(sc, acb, "timeout");
+
+		/* If nothing is active, try to start it now. */
+		if (sc->sc_state == SBIC_IDLE)
+			wd33c93_sched(sc);
 	}
 	splx(s);
 }
-
 
 void
 wd33c93_watchdog(void *arg)

@@ -28,6 +28,8 @@ include 	"arch/sgimips/conf/std.sgimips"
 makeoptions	TEXTADDR=0x88069000	# entry point
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
+makeoptions    DEBUG="-g"
+
 
 #ident		"GENERIC32-IP2x-$Revision: 1.125 $"
 

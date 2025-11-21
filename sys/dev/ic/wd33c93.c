@@ -1406,8 +1406,8 @@ wd33c93_intr(struct wd33c93_softc *sc)
 	} while (sc->sc_state == SBIC_CONNECTED &&
 	    	 asr & (SBIC_ASR_INT|SBIC_ASR_LCI));
 
-       SBIC_DEBUG(INTS, ("intr done. state=%d, asr=0x%02x\n",
-           sc->sc_state, asr));
+	SBIC_DEBUG(INTS, ("intr done. state=%d, asr=0x%02x\n",
+	    sc->sc_state, asr));
 
 	return(1);
 }

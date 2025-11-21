@@ -129,7 +129,8 @@ int	wd33c93_nextstate (struct wd33c93_softc *, struct wd33c93_acb *,
 int	wd33c93_abort (struct wd33c93_softc *, struct wd33c93_acb *,
      const char *);
 void	wd33c93_xferdone (struct wd33c93_softc *);
-void	wd33c93_error (struct wd33c93_softc *, struct wd33c93_acb *);
+void	wd33c93_error (struct wd33c93_softc *, struct wd33c93_acb *,
+			const char *);
 void	wd33c93_scsidone (struct wd33c93_softc *, struct wd33c93_acb *, int);
 void	wd33c93_sched (struct wd33c93_softc *);
 void	wd33c93_dequeue (struct wd33c93_softc *, struct wd33c93_acb *);
@@ -394,7 +395,8 @@ wd33c93_reset(struct wd33c93_softc *sc)
 }
 
 void
-wd33c93_error(struct wd33c93_softc *sc, struct wd33c93_acb *acb)
+wd33c93_error(struct wd33c93_softc *sc, struct wd33c93_acb *acb,
+    const char *str)
 {
 	struct scsipi_xfer *xs = acb->xs;
 
@@ -404,7 +406,7 @@ wd33c93_error(struct wd33c93_softc *sc, struct wd33c93_acb *acb)
 		return;
 
 	scsipi_printaddr(xs->xs_periph);
-	printf("SCSI Error\n");
+	printf("SCSI Error (%s)\n", str);
 }
 
 /*
@@ -1298,7 +1300,7 @@ wd33c93_xferdone(struct wd33c93_softc *sc)
 	if (phase == 0x60)
 		GET_SBIC_tlun(sc, sc->sc_status);
 	else
-		wd33c93_error(sc, sc->sc_nexus);
+		wd33c93_error(sc, sc->sc_nexus, "unexpected phase");
 
 	QPRINTF(("=STS:%02x=\n", sc->sc_status));
 	splx(s);
@@ -2150,7 +2152,7 @@ wd33c93_nextstate(struct wd33c93_softc *sc, struct wd33c93_acb	*acb, u_char csr,
 
 		SET_SBIC_control(sc, SBIC_CTL_EDI | SBIC_CTL_IDI);
 		if (acb->xs)
-			wd33c93_error(sc, acb);
+			wd33c93_error(sc, acb, "unexpected/abort");
 		wd33c93_abort(sc, acb, "next");
 
 		if (sc->sc_flags & SBICF_INDMA) {

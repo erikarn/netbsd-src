@@ -2299,7 +2299,7 @@ wd33c93_timeout(void *arg)
 		/* We need to service a missed IRQ */
 		wd33c93_intr(sc);
 	} else {
-		(void) wd33c93_abort(sc, sc->sc_nexus, "timeout");
+		(void) wd33c93_abort(sc, acb, "timeout");
 	}
 	splx(s);
 }

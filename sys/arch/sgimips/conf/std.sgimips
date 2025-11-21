@@ -9,5 +9,7 @@ options 	EXEC_SCRIPT	# exec #! scripts
 
 options 	MIPS3_ENABLE_CLOCK_INTR
 
+makeoptions	DEBUG="-g"
+
 # Atheros HAL options
 include "external/isc/atheros_hal/conf/std.ath_hal"

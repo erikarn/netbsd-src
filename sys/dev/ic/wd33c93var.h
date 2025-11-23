@@ -249,6 +249,7 @@ struct wd33c93_softc {
 #define DEBUG_MSGS	0x200
 #define DEBUG_TAGS	0x400
 #define DEBUG_SYNC	0x800
+#define DEBUG_SCSIREQ	0x1000
 
 #ifdef DEBUG
 extern int wd33c93_debug;

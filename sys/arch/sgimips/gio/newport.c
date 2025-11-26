@@ -430,11 +430,18 @@ newport_get_resolution(struct newport_devconfig *dc)
 	}
 }
 
+/*
+ * Probe the hardware as handed to us by the boot firmware
+ * before it's potentially fiddled with by the console and
+ * X11 servers.
+ *
+ * I've seen the X11 server return out of an 8 bit config
+ * with XMAP config = 0x02 after booting with config = 0x9d,
+ * which results in treating the hardware as XL24.
+ */
 static void
-newport_setup_hw(struct newport_devconfig *dc, int depth)
+newport_probe_hw(struct newport_devconfig *dc)
 {
-	uint16_t __unused(curp), tmp;
-	int i;
 	uint32_t scratch;
 
 	/* Get various revisions */
@@ -455,6 +462,13 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 	dc->dc_cmaprev = scratch & 0x07;
 	dc->dc_xmaprev = xmap9_read(dc, XMAP9_DCBCRS_REVISION) & 0x07;
 	dc->dc_depth = ( (dc->dc_boardrev > 1) && (scratch & 0x80)) ? 8 : 24;
+}
+
+static void
+newport_setup_hw(struct newport_devconfig *dc, int depth)
+{
+	uint16_t __unused(curp), tmp;
+	int i;
 
 	/* Setup cursor glyph */
 	curp = vc2_read_ireg(dc, VC2_IREG_CURSOR_ENTRY);
@@ -582,6 +596,7 @@ newport_attach_common(struct newport_devconfig *dc, struct gio_attach_args *ga)
 	dc->dc_st = ga->ga_iot;
 	dc->dc_sh = ga->ga_ioh;
 
+	newport_probe_hw(dc);
 	newport_setup_hw(dc, 8);
 
 	newport_get_resolution(dc);

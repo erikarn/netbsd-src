@@ -315,7 +315,6 @@ xmap9_wait(struct newport_devconfig *dc)
 static void
 xmap9_write_mode(struct newport_devconfig *dc, uint8_t index, uint32_t mode)
 {
-	volatile uint32_t junk;	
 	/* wait for FIFO if needed */
 	xmap9_wait(dc);
 
@@ -328,8 +327,6 @@ xmap9_write_mode(struct newport_devconfig *dc, uint8_t index, uint32_t mode)
 	    (1 << REX3_DCBMODE_CSSETUP_SHIFT));
 
 	rex3_write(dc, REX3_REG_DCBDATA0, (index << 24) | mode);
-	junk = rex3_read(dc, REX3_REG_DCBDATA0);
-	__USE(junk);
 }
 
 /**** Helper functions ****/

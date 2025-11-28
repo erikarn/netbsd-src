@@ -134,6 +134,8 @@ rex3_write(struct newport_devconfig *dc, bus_size_t rexreg, uint32_t val)
 {
 	bus_space_write_4(dc->dc_st, dc->dc_sh, NEWPORT_REX3_OFFSET + rexreg,
 	    val);
+//	bus_space_barrier(dc->dc_st, dc->dc_sh, NEWPORT_REX3_OFFSET + rexreg,
+//	    4, BUS_SPACE_BARRIER_WRITE);
 }
 
 static void
@@ -145,6 +147,8 @@ rex3_write_go(struct newport_devconfig *dc, bus_size_t rexreg, uint32_t val)
 static uint32_t
 rex3_read(struct newport_devconfig *dc, bus_size_t rexreg)
 {
+//	bus_space_barrier(dc->dc_st, dc->dc_sh, NEWPORT_REX3_OFFSET + rexreg,
+//	    4, BUS_SPACE_BARRIER_READ);
 	return bus_space_read_4(dc->dc_st, dc->dc_sh, NEWPORT_REX3_OFFSET +
 	    rexreg);
 }

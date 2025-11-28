@@ -601,10 +601,15 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 	aprint_debug("dcbcfg: now %02x\n", dcbcfg);
 
 	if (depth == 8) {
+		/*
+		 * Configure an 8 bit RGB colour map that uses the netbsd
+		 * packed RGB 332 format.  The rendering routines use these
+		 * values from the raster map attribute list.
+		 */
 		for (i = 0; i < 32; i++) {
 			xmap9_write_mode(dc, i,
 			    XMAP9_MODE_GAMMA_BYPASS |
-			    XMAP9_MODE_PIXSIZE_8BPP | XMAP9_MODE_PIXMODE_RGB2);
+			    XMAP9_MODE_PIXSIZE_8BPP | XMAP9_MODE_PIXMODE_CI);
 		}
 		rex3_wait_bfifo(dc);
 		xmap9_write(dc, XMAP9_DCBCRS_MODE_SELECT, 0);
@@ -613,7 +618,7 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		rex3_write(dc, REX3_REG_XYWIN, (4096 << 16) | 4096);
 		rex3_write(dc, REX3_REG_TOPSCAN, 0x3ff); /* XXX Why? XXX */
 
-		/* Setup CMAP */
+		/* Setup CMAP for an RGB 332 packing */
 		uint8_t ctmp;
 		for (i = 0; i < 256; i++) {
 			ctmp = i & 0xe0;
@@ -636,16 +641,30 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 			newport_cmap_setrgb(dc, i, our_cmap[i * 3],
 			    our_cmap[i * 3 + 1], our_cmap[i * 3 + 2]);
 		}
-		/* Write a ramp into RGB2 cmap */
+
+		/*
+		 * Write a ramp into RGB2 cmap
+		 *
+		 * Note this shouldn't be used in 8 bit mode / on an 8 bit
+		 * card because the XMAP9's have been programmed to use
+		 * PIXMODE_CI.
+		 */
 		for (i = 0; i < 256; i++)
 			newport_cmap_setrgb(dc, 0x1f00 + i, i, i, i);		
 	} else {
+		/*
+		 * Configure the hardware to use the a 24 bit RGB table at
+		 * RGB2 in CMAP.
+		 */
 		for (i = 0; i < 32; i++) {
 			xmap9_write_mode(dc, i,
 			    XMAP9_MODE_GAMMA_BYPASS |
 			    XMAP9_MODE_PIXSIZE_24BPP |
 			    XMAP9_MODE_PIXMODE_RGB2);
 		}
+
+		rex3_wait_bfifo(dc);
+		xmap9_write(dc, XMAP9_DCBCRS_MODE_SELECT, 0);
 	
 		/* Setup REX3 */
 		rex3_write(dc, REX3_REG_XYWIN, (4096 << 16) | 4096);

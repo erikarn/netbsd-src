@@ -560,6 +560,44 @@ newport_adjust_dcbcfg(struct newport_devconfig *dc, uint8_t *dcbcfg)
 }
 
 static void
+newport_setup_hw_ci_cmap(struct newport_devconfig *dc)
+{
+	int i;
+	uint8_t ctmp;
+
+	for (i = 0; i < 256; i++) {
+		ctmp = i & 0xe0;
+		/*
+		 * replicate bits so 0xe0 maps to a red value of 0xff
+		 * in order to make white look actually white
+		 */
+		ctmp |= (ctmp >> 3) | (ctmp >> 6);
+		our_cmap[i * 3] = ctmp;
+
+		ctmp = (i & 0x1c) << 3;
+		ctmp |= (ctmp >> 3) | (ctmp >> 6);
+		our_cmap[i * 3 + 1] = ctmp;
+
+		ctmp = (i & 0x03) << 6;
+		ctmp |= ctmp >> 2;
+		ctmp |= ctmp >> 4;
+		our_cmap[i * 3 + 2] = ctmp;
+
+		newport_cmap_setrgb(dc, i, our_cmap[i * 3],
+		    our_cmap[i * 3 + 1], our_cmap[i * 3 + 2]);
+	}
+}
+
+static void
+newport_setup_hw_rgb2_cmap(struct newport_devconfig *dc)
+{
+	int i;
+
+	for (i = 0; i < 256; i++)
+		newport_cmap_setrgb(dc, 0x1f00 + i, i, i, i);
+}
+
+static void
 newport_setup_hw(struct newport_devconfig *dc, int depth)
 {
 	uint16_t __unused(curp), tmp;
@@ -619,28 +657,7 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		rex3_write(dc, REX3_REG_TOPSCAN, 0x3ff); /* XXX Why? XXX */
 
 		/* Setup CMAP for an RGB 332 packing */
-		uint8_t ctmp;
-		for (i = 0; i < 256; i++) {
-			ctmp = i & 0xe0;
-			/*
-			 * replicate bits so 0xe0 maps to a red value of 0xff
-			 * in order to make white look actually white
-			 */
-			ctmp |= (ctmp >> 3) | (ctmp >> 6);
-			our_cmap[i * 3] = ctmp;
-
-			ctmp = (i & 0x1c) << 3;
-			ctmp |= (ctmp >> 3) | (ctmp >> 6);
-			our_cmap[i * 3 + 1] = ctmp;
-
-			ctmp = (i & 0x03) << 6;
-			ctmp |= ctmp >> 2;
-			ctmp |= ctmp >> 4;
-			our_cmap[i * 3 + 2] = ctmp;
-
-			newport_cmap_setrgb(dc, i, our_cmap[i * 3],
-			    our_cmap[i * 3 + 1], our_cmap[i * 3 + 2]);
-		}
+		newport_setup_hw_ci_cmap(dc);
 
 		/*
 		 * Write a ramp into RGB2 cmap
@@ -649,8 +666,7 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		 * card because the XMAP9's have been programmed to use
 		 * PIXMODE_CI.
 		 */
-		for (i = 0; i < 256; i++)
-			newport_cmap_setrgb(dc, 0x1f00 + i, i, i, i);		
+		newport_setup_hw_rgb2_cmap(dc);
 	} else {
 		/*
 		 * Configure the hardware to use the a 24 bit RGB table at
@@ -671,8 +687,7 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		rex3_write(dc, REX3_REG_TOPSCAN, 0x3ff); /* XXX Why? XXX */
 
 		/* Write a ramp into RGB2 cmap */
-		for (i = 0; i < 256; i++)
-			newport_cmap_setrgb(dc, 0x1f00 + i, i, i, i);		
+		newport_setup_hw_rgb2_cmap(dc);
 	}
 }
 

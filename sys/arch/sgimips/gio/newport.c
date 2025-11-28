@@ -250,6 +250,10 @@ vc2_write_ram(struct newport_devconfig *dc, uint16_t addr, uint16_t val)
 }
 #endif
 
+/*
+ * For now this reads only from XMAP0, it's not configurable
+ * to read from either.
+ */
 static u_int32_t
 xmap9_read(struct newport_devconfig *dc, int crs)
 {
@@ -263,6 +267,25 @@ xmap9_read(struct newport_devconfig *dc, int crs)
 	return rex3_read(dc, REX3_REG_DCBDATA0);
 }
 
+/*
+ * Read from XMAP1.
+ */
+static u_int32_t
+xmap9_read_xmap1(struct newport_devconfig *dc, int crs)
+{
+	rex3_write(dc, REX3_REG_DCBMODE,
+		REX3_DCBMODE_DW_1 |
+		(NEWPORT_DCBADDR_XMAP_1 << REX3_DCBMODE_DCBADDR_SHIFT) |
+		(crs << REX3_DCBMODE_DCBCRS_SHIFT) |
+		(3 << REX3_DCBMODE_CSWIDTH_SHIFT) |
+		(2 << REX3_DCBMODE_CSHOLD_SHIFT) |
+		(1 << REX3_DCBMODE_CSSETUP_SHIFT));
+	return rex3_read(dc, REX3_REG_DCBDATA0);
+}
+
+/*
+ * Write to both XMAPs at the same time.
+ */
 static void
 xmap9_write(struct newport_devconfig *dc, int crs, uint8_t val)
 {
@@ -277,12 +300,16 @@ xmap9_write(struct newport_devconfig *dc, int crs, uint8_t val)
 	rex3_write(dc, REX3_REG_DCBDATA0, val << 24);
 }
 
+/*
+ * Wait for the backend FIFO and then both XMAP FIFOs to become available.
+ */
 static inline void
 xmap9_wait(struct newport_devconfig *dc)
 {
 	rex3_wait_bfifo(dc);
 
 	do {} while (xmap9_read(dc, XMAP9_DCBCRS_FIFOAVAIL) == 0);
+	do {} while (xmap9_read_xmap1(dc, XMAP9_DCBCRS_FIFOAVAIL) == 0);
 }
 
 static void

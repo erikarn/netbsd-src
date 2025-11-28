@@ -153,11 +153,30 @@ rex3_read(struct newport_devconfig *dc, bus_size_t rexreg)
 	    rexreg);
 }
 
+/*
+ * Wait for the graphics FIFO and for it to be empty.
+ *
+ * This FIFO is used for submitted graphics register writes.
+ */
 static void
 rex3_wait_gfifo(struct newport_devconfig *dc)
 {
 	while (rex3_read(dc, REX3_REG_STATUS) &
 	    (REX3_STATUS_GFXBUSY | REX3_STATUS_PIPELEVEL_MASK))
+		;
+}
+
+/*
+ * Wait for the backend FIFO and for it to be empty.
+ *
+ * This FIFO is used for speaking to the data backend, notably
+ * the DCB.
+ */
+static void
+rex3_wait_bfifo(struct newport_devconfig *dc)
+{
+	while (rex3_read(dc, REX3_REG_STATUS) &
+	    (REX3_STATUS_BACKBUSY | REX3_STATUS_BPIPELEVEL_MASK))
 		;
 }
 
@@ -261,6 +280,8 @@ xmap9_write(struct newport_devconfig *dc, int crs, uint8_t val)
 static inline void
 xmap9_wait(struct newport_devconfig *dc)
 {
+	rex3_wait_bfifo(dc);
+
 	do {} while (xmap9_read(dc, XMAP9_DCBCRS_FIFOAVAIL) == 0);
 }
 
@@ -365,6 +386,8 @@ static void
 newport_cmap_setrgb(struct newport_devconfig *dc, int index, uint8_t r,
     uint8_t g, uint8_t b)
 {
+	rex3_wait_bfifo(dc);
+
 	rex3_write(dc, REX3_REG_DCBMODE,
 	    REX3_DCBMODE_DW_2 |
 	    REX3_DCBMODE_ENCRSINC |
@@ -462,6 +485,7 @@ newport_probe_hw(struct newport_devconfig *dc)
 
 	dc->dc_boardrev = (scratch >> 28) & 0x07;
 	dc->dc_cmaprev = scratch & 0x07;
+	rex3_wait_bfifo(dc);
 	dc->dc_xmaprev = xmap9_read(dc, XMAP9_DCBCRS_REVISION) & 0x07;
 	dc->dc_depth = ( (dc->dc_boardrev > 1) && (scratch & 0x80)) ? 8 : 24;
 }
@@ -488,6 +512,7 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 	rex3_write(dc, REX3_REG_CLIPMODE, 0x1e00);
 
 	/* Setup XMAP9s */
+	rex3_wait_bfifo(dc);
 	xmap9_write(dc, XMAP9_DCBCRS_CURSOR_CMAP, 0);
 
 	if (depth == 8) {
@@ -497,6 +522,7 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 			    XMAP9_MODE_GAMMA_BYPASS |
 			    XMAP9_MODE_PIXSIZE_8BPP | XMAP9_MODE_PIXMODE_RGB2);
 		}
+		rex3_wait_bfifo(dc);
 		xmap9_write(dc, XMAP9_DCBCRS_MODE_SELECT, 0);
 	
 		/* Setup REX3 */

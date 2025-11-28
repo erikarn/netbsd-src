@@ -514,11 +514,57 @@ newport_probe_hw(struct newport_devconfig *dc)
 	dc->dc_depth = ( (dc->dc_boardrev > 1) && (scratch & 0x80)) ? 8 : 24;
 }
 
+/*
+ * Adjust the XMAP configuration based on the earlier probed board type.
+ *
+ * This isn't the actual operating mode; this is instead the underlying
+ * hardware type.
+ */
+static void
+newport_adjust_dcbcfg(struct newport_devconfig *dc, uint8_t *dcbcfg)
+{
+
+	/* Configure 8 or 24 bit hardware */
+	if (dc->dc_depth == 8)
+		*dcbcfg |= XMAP9_CONFIG_8BIT_SYSTEM;
+	else
+		*dcbcfg &= ~XMAP9_CONFIG_8BIT_SYSTEM;
+
+	/*
+	 * Configure which RGB map to use for external video.
+	 *
+	 * Since we're initialising an 24 bit RGB map in RGB2, we
+	 * should be OK using this.
+	 *
+	 * Note that nothing right now is supported in the video
+	 * expansion slot on the newport cards, but just in case..
+	 */
+	*dcbcfg &= ~0x30;
+	*dcbcfg |= XMAP9_CONFIG_RGBMAP_2;
+
+	/* TODO: disable PUP, we don't use it */
+
+	/*
+	 * TODO: technically we should setup the two XMAPs for
+	 * odd and even pixel values.  However right now
+	 * we don't have write routines to target single
+	 * XMAPs.
+	 */
+
+	/*
+	 * TODO: we should choose fast or slow pclk and
+	 * the timing used in the DCB based on the pixel clock.
+	 * The firmware sets up something based on the attached
+	 * monitor but X11 can trash it.
+	 */
+}
+
 static void
 newport_setup_hw(struct newport_devconfig *dc, int depth)
 {
 	uint16_t __unused(curp), tmp;
 	int i;
+	uint8_t dcbcfg;
 
 	/* Setup cursor glyph */
 	curp = vc2_read_ireg(dc, VC2_IREG_CURSOR_ENTRY);
@@ -539,8 +585,22 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 	rex3_wait_bfifo(dc);
 	xmap9_write(dc, XMAP9_DCBCRS_CURSOR_CMAP, 0);
 
-	if (depth == 8) {
+	/*
+	 * Always configure the 8 bit or 24 bit configuration regardless
+	 * of the desired bit depth.  The XMAP9 documentation mentions this
+	 * does have some behaviour changes regardless of the pixel formats
+	 * being used.
+	 */
+	rex3_wait_bfifo(dc);
+	dcbcfg = xmap9_read(dc, XMAP9_DCBCRS_CONFIG);
+	aprint_debug("dcbcfg: was %02x\n", dcbcfg);
+	newport_adjust_dcbcfg(dc, &dcbcfg);
 
+	rex3_wait_bfifo(dc);
+	xmap9_write(dc, XMAP9_DCBCRS_CONFIG, dcbcfg);
+	aprint_debug("dcbcfg: now %02x\n", dcbcfg);
+
+	if (depth == 8) {
 		for (i = 0; i < 32; i++) {
 			xmap9_write_mode(dc, i,
 			    XMAP9_MODE_GAMMA_BYPASS |
@@ -580,13 +640,6 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		for (i = 0; i < 256; i++)
 			newport_cmap_setrgb(dc, 0x1f00 + i, i, i, i);		
 	} else {
-		uint8_t dcbcfg;
-
-		dcbcfg = xmap9_read(dc, XMAP9_DCBCRS_CONFIG);
-		aprint_debug("dcbcfg: %02x\n", dcbcfg);
-		dcbcfg &= 0x3c;
-		xmap9_write(dc, XMAP9_DCBCRS_CONFIG, dcbcfg | XMAP9_CONFIG_RGBMAP_2);
-
 		for (i = 0; i < 32; i++) {
 			xmap9_write_mode(dc, i,
 			    XMAP9_MODE_GAMMA_BYPASS |

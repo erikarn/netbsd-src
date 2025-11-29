@@ -508,10 +508,6 @@ newport_probe_hw(struct newport_devconfig *dc)
 	    (1 << REX3_DCBMODE_CSWIDTH_SHIFT) |
 	    (1 << REX3_DCBMODE_CSHOLD_SHIFT) |
 	    (1 << REX3_DCBMODE_CSSETUP_SHIFT));
-
-	scratch = vc2_read_ireg(dc, VC2_IREG_CONFIG);
-	dc->dc_vc2rev = (scratch & VC2_IREG_CONFIG_REVISION) >> 5;
-
 	scratch = rex3_read(dc, REX3_REG_DCBDATA0);
 
 	dc->dc_boardrev = (scratch >> 28) & 0x07;
@@ -519,6 +515,9 @@ newport_probe_hw(struct newport_devconfig *dc)
 	rex3_wait_bfifo(dc);
 	dc->dc_xmaprev = xmap9_read(dc, XMAP9_DCBCRS_REVISION) & 0x07;
 	dc->dc_depth = ( (dc->dc_boardrev > 1) && (scratch & 0x80)) ? 8 : 24;
+
+	scratch = vc2_read_ireg(dc, VC2_IREG_CONFIG);
+	dc->dc_vc2rev = (scratch & VC2_IREG_CONFIG_REVISION) >> 5;
 }
 
 /*

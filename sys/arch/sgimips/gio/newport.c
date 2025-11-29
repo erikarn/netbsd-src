@@ -322,10 +322,17 @@ xmap9_write_mode(struct newport_devconfig *dc, uint8_t index, uint32_t mode)
 	    REX3_DCBMODE_DW_4 |
 	    (NEWPORT_DCBADDR_XMAP_BOTH << REX3_DCBMODE_DCBADDR_SHIFT) |
 	    (XMAP9_DCBCRS_MODE_SETUP << REX3_DCBMODE_DCBCRS_SHIFT) |
+#if 0
 	    (3 << REX3_DCBMODE_CSWIDTH_SHIFT) |
 	    (2 << REX3_DCBMODE_CSHOLD_SHIFT) |
-	    (1 << REX3_DCBMODE_CSSETUP_SHIFT));
-
+	    (1 << REX3_DCBMODE_CSSETUP_SHIFT)
+#else
+	/* [adrian] This timing works reliably on my XL8 + R4600-100 */
+	    (4 << REX3_DCBMODE_CSWIDTH_SHIFT) |
+	    (2 << REX3_DCBMODE_CSHOLD_SHIFT) |
+	    (3 << REX3_DCBMODE_CSSETUP_SHIFT)
+#endif
+	);
 	rex3_write(dc, REX3_REG_DCBDATA0, (index << 24) | (mode & 0xffffff));
 }
 

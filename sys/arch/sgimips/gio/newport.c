@@ -604,11 +604,37 @@ newport_setup_hw_rgb2_cmap(struct newport_devconfig *dc)
 		newport_cmap_setrgb(dc, 0x1f00 + i, i, i, i);
 }
 
+/*
+ * Setup the XMAP9 mode registers with the given mode.
+ *
+ * This tells the two XMAP9s (one even column, one odd column)
+ * how to interpret the pixel data being streamed in from framebuffer
+ * memory and what config bits to expose to the CMAP hardware and
+ * the DAC as it's converted into final RGB signals for display.
+ *
+ * Each entry in the mode table is a DID (display ID) in the VC2
+ * chip, and the VC2 chip will shift out a DID value to pair with
+ * the framebuffer memory contents being fed into the XMAP9s.
+ * Since we're not currently filling the VC2 DID table with values,
+ * just program them all in here with the same configuration.
+ */
+static void
+newport_setup_hw_xmap9_modes(struct newport_devconfig *dc,
+    uint32_t mode_mask)
+{
+	int i;
+
+	for (i = 0; i < 32; i++) {
+		xmap9_write_mode(dc, i, mode_mask);
+	}
+	rex3_wait_bfifo(dc);
+	xmap9_write(dc, XMAP9_DCBCRS_MODE_SELECT, 0);
+}
+
 static void
 newport_setup_hw(struct newport_devconfig *dc, int depth)
 {
 	uint16_t __unused(curp), tmp;
-	int i;
 	uint8_t dcbcfg;
 
 	/* Setup cursor glyph */
@@ -651,14 +677,9 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		 * packed RGB 332 format.  The rendering routines use these
 		 * values from the raster map attribute list.
 		 */
-		for (i = 0; i < 32; i++) {
-			xmap9_write_mode(dc, i,
-			    XMAP9_MODE_GAMMA_BYPASS |
-			    XMAP9_MODE_PIXSIZE_8BPP | XMAP9_MODE_PIXMODE_CI);
-		}
-		rex3_wait_bfifo(dc);
-		xmap9_write(dc, XMAP9_DCBCRS_MODE_SELECT, 0);
-	
+		newport_setup_hw_xmap9_modes(dc, XMAP9_MODE_GAMMA_BYPASS |
+		    XMAP9_MODE_PIXSIZE_8BPP | XMAP9_MODE_PIXMODE_CI);
+
 		/* Setup REX3 */
 		rex3_write(dc, REX3_REG_XYWIN, (4096 << 16) | 4096);
 		rex3_write(dc, REX3_REG_TOPSCAN, 0x3ff); /* XXX Why? XXX */
@@ -679,15 +700,8 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		 * Configure the hardware to use the a 24 bit RGB table at
 		 * RGB2 in CMAP.
 		 */
-		for (i = 0; i < 32; i++) {
-			xmap9_write_mode(dc, i,
-			    XMAP9_MODE_GAMMA_BYPASS |
-			    XMAP9_MODE_PIXSIZE_24BPP |
-			    XMAP9_MODE_PIXMODE_RGB2);
-		}
-
-		rex3_wait_bfifo(dc);
-		xmap9_write(dc, XMAP9_DCBCRS_MODE_SELECT, 0);
+		newport_setup_hw_xmap9_modes(dc, XMAP9_MODE_GAMMA_BYPASS |
+		    XMAP9_MODE_PIXSIZE_24BPP | XMAP9_MODE_PIXMODE_RGB2);
 	
 		/* Setup REX3 */
 		rex3_write(dc, REX3_REG_XYWIN, (4096 << 16) | 4096);

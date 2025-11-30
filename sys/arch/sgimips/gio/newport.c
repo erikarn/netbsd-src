@@ -508,16 +508,22 @@ newport_probe_hw(struct newport_devconfig *dc)
 	    (1 << REX3_DCBMODE_CSWIDTH_SHIFT) |
 	    (1 << REX3_DCBMODE_CSHOLD_SHIFT) |
 	    (1 << REX3_DCBMODE_CSSETUP_SHIFT));
-	scratch = rex3_read(dc, REX3_REG_DCBDATA0);
+	scratch = rex3_read(dc, REX3_REG_DCBDATA0) >> 24;
 
-	dc->dc_boardrev = (scratch >> 28) & 0x07;
+	aprint_normal("%s: CMAP_0 REVISION 0x%08x\n", __func__, scratch);
+
+	dc->dc_boardrev = (scratch >> 4) & 0x07;
 	dc->dc_cmaprev = scratch & 0x07;
 	rex3_wait_bfifo(dc);
 	dc->dc_xmaprev = xmap9_read(dc, XMAP9_DCBCRS_REVISION) & 0x07;
 	dc->dc_depth = ( (dc->dc_boardrev > 1) && (scratch & 0x80)) ? 8 : 24;
 
+	aprint_normal("%s: XMAP_CONFIG: 0x%08x\n", __func__,
+	    xmap9_read(dc, XMAP9_DCBCRS_REVISION));
+
 	scratch = vc2_read_ireg(dc, VC2_IREG_CONFIG);
 	dc->dc_vc2rev = (scratch & VC2_IREG_CONFIG_REVISION) >> 5;
+	aprint_normal("%s: VC2_IREG_CONFIG config: 0x%08x\n", __func__, scratch);
 }
 
 /*

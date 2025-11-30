@@ -251,15 +251,21 @@ vc2_write_ram(struct newport_devconfig *dc, uint16_t addr, uint16_t val)
 #endif
 
 /*
- * For now this reads only from XMAP0, it's not configurable
- * to read from either.
+ * Read from the given XMAP chip.
+ *
+ * Note this must not be used to read from NEWPORT_DCBADDR_XMAP_BOTH.
  */
 static u_int32_t
-xmap9_read(struct newport_devconfig *dc, int crs)
+xmap9_read(struct newport_devconfig *dc, int chip, int crs)
 {
+
+	KASSERT(chip != NEWPORT_DCBADDR_XMAP_BOTH);
+	if (chip == NEWPORT_DCBADDR_XMAP_BOTH)
+		chip = NEWPORT_DCBADDR_XMAP_0;
+
 	rex3_write(dc, REX3_REG_DCBMODE,
 		REX3_DCBMODE_DW_1 |
-		(NEWPORT_DCBADDR_XMAP_0 << REX3_DCBMODE_DCBADDR_SHIFT) |
+		(chip << REX3_DCBMODE_DCBADDR_SHIFT) |
 		(crs << REX3_DCBMODE_DCBCRS_SHIFT) |
 		(3 << REX3_DCBMODE_CSWIDTH_SHIFT) |
 		(2 << REX3_DCBMODE_CSHOLD_SHIFT) |
@@ -268,30 +274,14 @@ xmap9_read(struct newport_devconfig *dc, int crs)
 }
 
 /*
- * Read from XMAP1.
- */
-static u_int32_t
-xmap9_read_xmap1(struct newport_devconfig *dc, int crs)
-{
-	rex3_write(dc, REX3_REG_DCBMODE,
-		REX3_DCBMODE_DW_1 |
-		(NEWPORT_DCBADDR_XMAP_1 << REX3_DCBMODE_DCBADDR_SHIFT) |
-		(crs << REX3_DCBMODE_DCBCRS_SHIFT) |
-		(3 << REX3_DCBMODE_CSWIDTH_SHIFT) |
-		(2 << REX3_DCBMODE_CSHOLD_SHIFT) |
-		(1 << REX3_DCBMODE_CSSETUP_SHIFT));
-	return rex3_read(dc, REX3_REG_DCBDATA0);
-}
-
-/*
- * Write to both XMAPs at the same time.
+ * write to the given XMAP chip, or to both.
  */
 static void
-xmap9_write(struct newport_devconfig *dc, int crs, uint8_t val)
+xmap9_write(struct newport_devconfig *dc, int chip, int crs, uint8_t val)
 {
 	rex3_write(dc, REX3_REG_DCBMODE,
 	    REX3_DCBMODE_DW_1 |
-	    (NEWPORT_DCBADDR_XMAP_BOTH << REX3_DCBMODE_DCBADDR_SHIFT) |
+	    (chip << REX3_DCBMODE_DCBADDR_SHIFT) |
 	    (crs << REX3_DCBMODE_DCBCRS_SHIFT) |
 	    (3 << REX3_DCBMODE_CSWIDTH_SHIFT) |
 	    (2 << REX3_DCBMODE_CSHOLD_SHIFT) |
@@ -308,8 +298,10 @@ xmap9_wait(struct newport_devconfig *dc)
 {
 	rex3_wait_bfifo(dc);
 
-	do {} while (xmap9_read(dc, XMAP9_DCBCRS_FIFOAVAIL) == 0);
-	do {} while (xmap9_read_xmap1(dc, XMAP9_DCBCRS_FIFOAVAIL) == 0);
+	do {} while (xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0,
+	    XMAP9_DCBCRS_FIFOAVAIL) == 0);
+	do {} while (xmap9_read(dc, NEWPORT_DCBADDR_XMAP_1,
+	    XMAP9_DCBCRS_FIFOAVAIL) == 0);
 }
 
 static void
@@ -515,11 +507,12 @@ newport_probe_hw(struct newport_devconfig *dc)
 	dc->dc_boardrev = (scratch >> 4) & 0x07;
 	dc->dc_cmaprev = scratch & 0x07;
 	rex3_wait_bfifo(dc);
-	dc->dc_xmaprev = xmap9_read(dc, XMAP9_DCBCRS_REVISION) & 0x07;
+	dc->dc_xmaprev = xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0,
+	    XMAP9_DCBCRS_REVISION) & 0x07;
 	dc->dc_depth = ( (dc->dc_boardrev > 1) && (scratch & 0x80)) ? 8 : 24;
 
 	aprint_normal("%s: XMAP_CONFIG: 0x%08x\n", __func__,
-	    xmap9_read(dc, XMAP9_DCBCRS_REVISION));
+	    xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0, XMAP9_DCBCRS_REVISION));
 
 	scratch = vc2_read_ireg(dc, VC2_IREG_CONFIG);
 	dc->dc_vc2rev = (scratch & VC2_IREG_CONFIG_REVISION) >> 5;
@@ -633,7 +626,8 @@ newport_setup_hw_xmap9_modes(struct newport_devconfig *dc,
 		xmap9_write_mode(dc, i, mode_mask);
 	}
 	rex3_wait_bfifo(dc);
-	xmap9_write(dc, XMAP9_DCBCRS_MODE_SELECT, 0);
+	xmap9_write(dc, NEWPORT_DCBADDR_XMAP_BOTH,
+	    XMAP9_DCBCRS_MODE_SELECT, 0);
 }
 
 static void
@@ -659,7 +653,8 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 
 	/* Setup XMAP9s */
 	rex3_wait_bfifo(dc);
-	xmap9_write(dc, XMAP9_DCBCRS_CURSOR_CMAP, 0);
+	xmap9_write(dc, NEWPORT_DCBADDR_XMAP_BOTH, XMAP9_DCBCRS_CURSOR_CMAP,
+	    0);
 
 	/*
 	 * Always configure the 8 bit or 24 bit configuration regardless
@@ -668,12 +663,12 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 	 * being used.
 	 */
 	rex3_wait_bfifo(dc);
-	dcbcfg = xmap9_read(dc, XMAP9_DCBCRS_CONFIG);
+	dcbcfg = xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0, XMAP9_DCBCRS_CONFIG);
 	aprint_debug("dcbcfg: was %02x\n", dcbcfg);
 	newport_adjust_dcbcfg(dc, &dcbcfg);
 
 	rex3_wait_bfifo(dc);
-	xmap9_write(dc, XMAP9_DCBCRS_CONFIG, dcbcfg);
+	xmap9_write(dc, NEWPORT_DCBADDR_XMAP_BOTH, XMAP9_DCBCRS_CONFIG, dcbcfg);
 	aprint_debug("dcbcfg: now %02x\n", dcbcfg);
 
 	if (depth == 8) {

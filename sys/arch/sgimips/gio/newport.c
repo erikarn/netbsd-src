@@ -268,9 +268,9 @@ xmap9_read(struct newport_devconfig *dc, int chip, int crs)
 		(chip << REX3_DCBMODE_DCBADDR_SHIFT) |
 		(crs << REX3_DCBMODE_DCBCRS_SHIFT) |
 		(3 << REX3_DCBMODE_CSWIDTH_SHIFT) |
-		(2 << REX3_DCBMODE_CSHOLD_SHIFT) |
-		(1 << REX3_DCBMODE_CSSETUP_SHIFT));
-	return rex3_read(dc, REX3_REG_DCBDATA0);
+		(1 << REX3_DCBMODE_CSHOLD_SHIFT) |
+		(2 << REX3_DCBMODE_CSSETUP_SHIFT));
+	return (uint8_t) (rex3_read(dc, REX3_REG_DCBDATA0) >> 24);
 }
 
 /*
@@ -283,9 +283,9 @@ xmap9_write(struct newport_devconfig *dc, int chip, int crs, uint8_t val)
 	    REX3_DCBMODE_DW_1 |
 	    (chip << REX3_DCBMODE_DCBADDR_SHIFT) |
 	    (crs << REX3_DCBMODE_DCBCRS_SHIFT) |
-	    (3 << REX3_DCBMODE_CSWIDTH_SHIFT) |
-	    (2 << REX3_DCBMODE_CSHOLD_SHIFT) |
-	    (1 << REX3_DCBMODE_CSSETUP_SHIFT));
+	    (0 << REX3_DCBMODE_CSWIDTH_SHIFT) |
+	    (1 << REX3_DCBMODE_CSHOLD_SHIFT) |
+	    (2 << REX3_DCBMODE_CSSETUP_SHIFT));
 
 	rex3_write(dc, REX3_REG_DCBDATA0, val << 24);
 }

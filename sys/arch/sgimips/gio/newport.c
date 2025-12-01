@@ -506,6 +506,29 @@ newport_get_resolution(struct newport_devconfig *dc)
 }
 
 /*
+ * Read from an 8 bit CMAP register.
+ *
+ * This must only be used on individual CMAPs (0 or 1), not both.
+ */
+static uint8_t
+cmap_reg_read(struct newport_devconfig *dc, uint8_t id, uint8_t reg)
+{
+	KASSERT(id != NEWPORT_DCBADDR_CMAP_BOTH);
+	if (id == NEWPORT_DCBADDR_CMAP_BOTH)
+		id = NEWPORT_DCBADDR_CMAP_0;
+
+	/* Get various revisions */
+	rex3_write(dc, REX3_REG_DCBMODE,
+	    REX3_DCBMODE_DW_1 |
+	    (id << REX3_DCBMODE_DCBADDR_SHIFT) |
+	    (reg << REX3_DCBMODE_DCBCRS_SHIFT) |
+	    (1 << REX3_DCBMODE_CSWIDTH_SHIFT) |
+	    (1 << REX3_DCBMODE_CSHOLD_SHIFT) |
+	    (1 << REX3_DCBMODE_CSSETUP_SHIFT));
+	return (uint8_t)(rex3_read(dc, REX3_REG_DCBDATA0) >> 24);
+}
+
+/*
  * Probe the hardware as handed to us by the boot firmware
  * before it's potentially fiddled with by the console and
  * X11 servers.
@@ -520,30 +543,43 @@ newport_probe_hw(struct newport_devconfig *dc)
 	uint32_t scratch;
 
 	/* Get various revisions */
-	rex3_write(dc, REX3_REG_DCBMODE,
-	    REX3_DCBMODE_DW_1 |
-	    (NEWPORT_DCBADDR_CMAP_0 << REX3_DCBMODE_DCBADDR_SHIFT) |
-	    (CMAP_DCBCRS_REVISION << REX3_DCBMODE_DCBCRS_SHIFT) |
-	    (1 << REX3_DCBMODE_CSWIDTH_SHIFT) |
-	    (1 << REX3_DCBMODE_CSHOLD_SHIFT) |
-	    (1 << REX3_DCBMODE_CSSETUP_SHIFT));
-	scratch = rex3_read(dc, REX3_REG_DCBDATA0) >> 24;
 
-	aprint_normal("%s: CMAP_0 REVISION 0x%08x\n", __func__, scratch);
+	/*
+	 * CMAP0 - CMAP revision bits 3:0, board revision bits 6:4,
+	 * If boardrev > 1 then the b7 == 1 signals an 8 bit framebuffer.
+	 */
+	rex3_wait_bfifo(dc);
+	scratch = cmap_reg_read(dc, NEWPORT_DCBADDR_CMAP_0,
+	    CMAP_DCBCRS_REVISION);
+	aprint_normal("%s: CMAP_0 REVISION 0x%02x\n", __func__, scratch);
 
 	dc->dc_boardrev = (scratch >> 4) & 0x07;
 	dc->dc_cmaprev = scratch & 0x07;
+
+	/*
+	 * CMAP1 - the 4 monitor sense bits are on bits 7:4.
+	 *
+	 * Note that for MACH_SGI_IP22_GUINNESS (Indy), the monitor PROM
+	 * variable can override a 'default' monitor setting of 1024x768
+	 * with two others - H = 1280x1024x60Hz and S = 1280x1024x76Hz.
+	 * So when (eventually) doing a monitor ID lookup we'll also
+	 * need to handle that.
+	 */
+	scratch = cmap_reg_read(dc, NEWPORT_DCBADDR_CMAP_1,
+	    CMAP_DCBCRS_REVISION);
+	aprint_normal("%s: CMAP_1 REVISION 0x%02x\n", __func__, scratch);
+
 	rex3_wait_bfifo(dc);
 	dc->dc_xmaprev = xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0,
 	    XMAP9_DCBCRS_REVISION) & 0x07;
 	dc->dc_depth = ( (dc->dc_boardrev > 1) && (scratch & 0x80)) ? 8 : 24;
 
-	aprint_normal("%s: XMAP_CONFIG: 0x%08x\n", __func__,
+	aprint_normal("%s: XMAP_0 REVISION: 0x%08x\n", __func__,
 	    xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0, XMAP9_DCBCRS_REVISION));
 
 	scratch = vc2_read_ireg(dc, VC2_IREG_CONFIG);
 	dc->dc_vc2rev = (scratch & VC2_IREG_CONFIG_REVISION) >> 5;
-	aprint_normal("%s: VC2_IREG_CONFIG config: 0x%08x\n", __func__, scratch);
+	aprint_normal("%s: VC2_IREG_CONFIG config: 0x%04x\n", __func__, scratch);
 }
 
 /*

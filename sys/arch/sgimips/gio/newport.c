@@ -304,6 +304,32 @@ xmap9_wait(struct newport_devconfig *dc)
 	    XMAP9_DCBCRS_FIFOAVAIL) == 0);
 }
 
+/*
+ * Write out the 32 bit mode entry to both XMAP9 chips.
+ *
+ * This is actually a fun clock domain crossing problem - the
+ * XMAP9 isn't signaling an ACK back to the REX3 chip, so
+ * the CS setup, width and hold times need to be calculated
+ * based on 33MHz GIO clock (REX3) <-> the currently configured
+ * pixel clock (XMAP9).
+ *
+ * The pixel clock is set by the firmware based on the attached
+ * monitor; it programs the BT445 RAMDAC to generate a pixelclock
+ * that's then divided in half and sent in both phases to the
+ * various chips doing odd/even pixel handling (which includes the
+ * XMAP9.)
+ *
+ * Unfortunately we don't have the pixel clock available to us - only
+ * the monitor resolution from the VC2 table - so eventually the
+ * driver will need to grow a way to read the monitor sense lines and
+ * mirror what the firmware is doing.
+ *
+ * Also note on SGI Indy the PROM recognises "setenv monitor" to
+ * force a 1280x1024x60Hz monitor (setenv monitor H) and
+ * a 1280x1024*76Hz monitor (setenv monitor S).  To correctly handle
+ * that we will ALSO need to parse the PROM environment and make
+ * it available here.
+ */
 static void
 xmap9_write_mode(struct newport_devconfig *dc, uint8_t index, uint32_t mode)
 {
@@ -315,14 +341,15 @@ xmap9_write_mode(struct newport_devconfig *dc, uint8_t index, uint32_t mode)
 	    (NEWPORT_DCBADDR_XMAP_BOTH << REX3_DCBMODE_DCBADDR_SHIFT) |
 	    (XMAP9_DCBCRS_MODE_SETUP << REX3_DCBMODE_DCBCRS_SHIFT) |
 #if 0
-	    (3 << REX3_DCBMODE_CSWIDTH_SHIFT) |
-	    (2 << REX3_DCBMODE_CSHOLD_SHIFT) |
-	    (1 << REX3_DCBMODE_CSSETUP_SHIFT)
+	/* Timing for 1280x1024x76Hz */
+	    (0 << REX3_DCBMODE_CSWIDTH_SHIFT) |
+	    (1 << REX3_DCBMODE_CSHOLD_SHIFT) |
+	    (2 << REX3_DCBMODE_CSSETUP_SHIFT)
 #else
-	/* [adrian] This timing works reliably on my XL8 + R4600-100 */
-	    (4 << REX3_DCBMODE_CSWIDTH_SHIFT) |
-	    (2 << REX3_DCBMODE_CSHOLD_SHIFT) |
-	    (3 << REX3_DCBMODE_CSSETUP_SHIFT)
+	/* Timing for 1024x760x60Hz, 1280x1024x60Hz */
+	    (0 << REX3_DCBMODE_CSWIDTH_SHIFT) |
+	    (5 << REX3_DCBMODE_CSHOLD_SHIFT) |
+	    (5 << REX3_DCBMODE_CSSETUP_SHIFT)
 #endif
 	);
 	rex3_write(dc, REX3_REG_DCBDATA0, (index << 24) | (mode & 0xffffff));

@@ -685,10 +685,6 @@ newport_probe_monitor(struct newport_devconfig *dc)
  * Probe the hardware as handed to us by the boot firmware
  * before it's potentially fiddled with by the console and
  * X11 servers.
- *
- * I've seen the X11 server return out of an 8 bit config
- * with XMAP config = 0x02 after booting with config = 0x9d,
- * which results in treating the hardware as XL24.
  */
 static void
 newport_probe_hw(struct newport_devconfig *dc)

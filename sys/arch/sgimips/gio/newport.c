@@ -404,6 +404,23 @@ xmap9_write(struct newport_devconfig *dc, int chip, int crs, uint8_t val)
 }
 
 /*
+ * Wait for the given XMAP9 mode FIFO to be ready.
+ *
+ * Since we're not trying to optimise for bursting mode writes,
+ * just wait for /a/ FIFO entry to be avaliable.
+ *
+ * The XMAP9 documentation covers the gray mode encoding
+ * of this register in case there's a future need for
+ * bursting mode updates without individual FIFO checks.
+ */
+static inline void
+xmap9_wait_chip(struct newport_devconfig *dc, int chip)
+{
+	while (xmap9_read(dc, chip, XMAP9_DCBCRS_FIFOAVAIL) == 0)
+		;
+}
+
+/*
  * Wait for the backend FIFO and then both XMAP FIFOs to become available.
  */
 static inline void
@@ -411,10 +428,8 @@ xmap9_wait(struct newport_devconfig *dc)
 {
 	rex3_wait_bfifo(dc);
 
-	do {} while (xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0,
-	    XMAP9_DCBCRS_FIFOAVAIL) == 0);
-	do {} while (xmap9_read(dc, NEWPORT_DCBADDR_XMAP_1,
-	    XMAP9_DCBCRS_FIFOAVAIL) == 0);
+	xmap9_wait_chip(dc, NEWPORT_DCBADDR_XMAP_0);
+	xmap9_wait_chip(dc, NEWPORT_DCBADDR_XMAP_1);
 }
 
 /*

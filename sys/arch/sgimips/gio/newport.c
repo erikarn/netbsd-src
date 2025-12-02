@@ -39,6 +39,10 @@ __KERNEL_RCSID(0, "$NetBSD: newport.c,v 1.23 2021/08/07 16:19:04 thorpej Exp $")
 #include <sys/kmem.h>
 
 #include <machine/sysconf.h>
+#include <machine/machtype.h>
+
+#include <dev/arcbios/arcbios.h>
+#include <dev/arcbios/arcbiosvar.h>
 
 #include <dev/wscons/wsconsio.h>
 #include <dev/wscons/wsdisplayvar.h>
@@ -49,6 +53,8 @@ __KERNEL_RCSID(0, "$NetBSD: newport.c,v 1.23 2021/08/07 16:19:04 thorpej Exp $")
 #include <sgimips/gio/giovar.h>
 #include <sgimips/gio/newportvar.h>
 #include <sgimips/gio/newportreg.h>
+
+extern int mach_subtype;
 
 struct newport_softc {
 	device_t sc_dev;
@@ -70,6 +76,8 @@ struct newport_devconfig {
 	int			dc_xres;
 	int			dc_yres;
 	int			dc_depth;
+	int			dc_monitor_cmap_id;
+	int			dc_monitor_prom_id;
 
 	int			dc_font;
 	struct wsscreen_descr	*dc_screen;
@@ -127,6 +135,34 @@ static struct newport_devconfig newport_console_dc;
 static int newport_is_console = 0;
 
 uint8_t our_cmap[768];
+
+/*
+ * Return the active monitor ID.
+ *
+ * The firmware first checks to see if it's an unknown monitor
+ * type.  If it is, then the prom ID can override it.
+ * If it is a detected and known monitor then that is returned.
+ *
+ * TODO: this is intentionally wrong until the monitor table is
+ * added!
+ */
+static int
+newport_get_monitor_id(struct newport_devconfig *dc)
+{
+	if (dc->dc_monitor_prom_id != -1)
+		return (dc->dc_monitor_prom_id);
+
+	return (dc->dc_monitor_cmap_id);
+}
+
+/*
+ * Return the string representation of the active monitor ID.
+ */
+static const char *
+newport_get_monitor_str(struct newport_devconfig *dc)
+{
+	return ("(TBD)");
+}
 
 /**** Low-level hardware register groveling functions ****/
 static void
@@ -528,6 +564,47 @@ cmap_reg_read(struct newport_devconfig *dc, uint8_t id, uint8_t reg)
 	return (uint8_t)(rex3_read(dc, REX3_REG_DCBDATA0) >> 24);
 }
 
+static void
+newport_probe_monitor(struct newport_devconfig *dc)
+{
+	const char *m;
+	uint8_t scratch;
+
+	/*
+	 * CMAP1 - the 4 monitor sense bits are on bits 7:4.
+	 *
+	 * Note that for MACH_SGI_IP22_GUINNESS (Indy), the monitor PROM
+	 * variable can override a 'default' monitor setting of 1024x768
+	 * with two others - H = 1280x1024x60Hz and S = 1280x1024x76Hz.
+	 * So when (eventually) doing a monitor ID lookup we'll also
+	 * need to handle that.
+	 */
+	scratch = cmap_reg_read(dc, NEWPORT_DCBADDR_CMAP_1,
+	    CMAP_DCBCRS_REVISION);
+	aprint_normal("%s: CMAP_1 REVISION 0x%02x\n", __func__, scratch);
+	dc->dc_monitor_cmap_id = (scratch >> 4) & 0x0f;
+	dc->dc_monitor_prom_id = -1;
+
+	/* Only check the PROM monitor on SGI Indy */
+	if (mach_subtype != MACH_SGI_IP22_GUINNESS)
+		return;
+
+	m = arcbios_GetEnvironmentVariable("monitor");
+	if (m == NULL)
+		return;
+	else if (m[0] == '0')
+		return;
+
+	/*
+	 * H = 1280x1024, 60Hz
+	 * S = 1280x1024, 76Hz
+	 */
+	if (m[0] == 'h' || m[0] == 'H')
+		dc->dc_monitor_prom_id = 10;
+	else if (m[0] == 'S')
+		dc->dc_monitor_prom_id = 1;
+}
+
 /*
  * Probe the hardware as handed to us by the boot firmware
  * before it's potentially fiddled with by the console and
@@ -555,19 +632,6 @@ newport_probe_hw(struct newport_devconfig *dc)
 
 	dc->dc_boardrev = (scratch >> 4) & 0x07;
 	dc->dc_cmaprev = scratch & 0x07;
-
-	/*
-	 * CMAP1 - the 4 monitor sense bits are on bits 7:4.
-	 *
-	 * Note that for MACH_SGI_IP22_GUINNESS (Indy), the monitor PROM
-	 * variable can override a 'default' monitor setting of 1024x768
-	 * with two others - H = 1280x1024x60Hz and S = 1280x1024x76Hz.
-	 * So when (eventually) doing a monitor ID lookup we'll also
-	 * need to handle that.
-	 */
-	scratch = cmap_reg_read(dc, NEWPORT_DCBADDR_CMAP_1,
-	    CMAP_DCBCRS_REVISION);
-	aprint_normal("%s: CMAP_1 REVISION 0x%02x\n", __func__, scratch);
 
 	rex3_wait_bfifo(dc);
 	dc->dc_xmaprev = xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0,
@@ -820,6 +884,7 @@ newport_attach_common(struct newport_devconfig *dc, struct gio_attach_args *ga)
 	dc->dc_sh = ga->ga_ioh;
 
 	newport_probe_hw(dc);
+	newport_probe_monitor(dc);
 	newport_setup_hw(dc, 8);
 
 	newport_get_resolution(dc);
@@ -862,6 +927,13 @@ newport_attach(device_t parent, device_t self, void *aux)
 	aprint_normal(": SGI NG1 (board revision %d, cmap revision %d, xmap revision %d, vc2 revision %d), depth %d\n",
 	    sc->sc_dc->dc_boardrev, sc->sc_dc->dc_cmaprev,
 	    sc->sc_dc->dc_xmaprev, sc->sc_dc->dc_vc2rev, sc->sc_dc->dc_depth);
+	aprint_normal("%s: 13W3 Monitor ID %d, PROM ID %d, Monitor ID %d (%s)\n",
+	    device_xname(self),
+	    sc->sc_dc->dc_monitor_cmap_id,
+	    sc->sc_dc->dc_monitor_prom_id,
+	    newport_get_monitor_id(sc->sc_dc),
+	    newport_get_monitor_str(sc->sc_dc));
+
 	vcons_init(&sc->sc_dc->dc_vd, sc->sc_dc, sc->sc_dc->dc_screen,
 	    &newport_accessops);
 	sc->sc_dc->dc_vd.init_screen = newport_init_screen;

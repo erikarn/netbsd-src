@@ -66,12 +66,14 @@ struct newport_monitor_entry {
 	int y;
 	int hz;
 	bool unknown;
-	struct newport_dcb_cs_params *mode_params;
+	int cfreq;
 };
 
-/* 1024x768 60hz, 1280x1024 60hz */
+/* otherwise (likely PAL/NTSC modes) */
+static struct newport_dcb_cs_params newport_dcb_cs_wslow = { 0, 12, 12 };
+/* cfreq > 59MHz */
 static struct newport_dcb_cs_params newport_dcb_cs_slow = { 0, 5, 5 };
-/* 1280x1024, 76Hz */
+/* cfreq > 119MHz */
 static struct newport_dcb_cs_params newport_dcb_cs_fast = { 0, 1, 2 };
 
 /*
@@ -80,22 +82,22 @@ static struct newport_dcb_cs_params newport_dcb_cs_fast = { 0, 1, 2 };
  */
 static struct newport_monitor_entry newport_monitor_list[] = {
 	/* Firmware monitor IDs */
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
-	{ "1280x1024 76Hz", 1280, 1024, 76, false, &newport_dcb_cs_fast },
-	{ "1280x1024 76Hz", 1280, 1024, 76, false, &newport_dcb_cs_fast },
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
-	{ "1024x768 76Hz", 1024, 768, 70, false, &newport_dcb_cs_fast },
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
-	{ "1280x1024 72Hz", 1280, 1024, 72, false, &newport_dcb_cs_fast },
-	{ "1280x1024 60Hz", 1280, 1024, 60, false, &newport_dcb_cs_slow },
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
-	{ "1280x1024 60Hz", 1280, 1024, 60, false, &newport_dcb_cs_slow },
-	{ "1280x1024 60Hz", 1280, 1024, 60, false, &newport_dcb_cs_slow },
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
-	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, 64 },
+	{ "1280x1024 76Hz", 1280, 1024, 76, false, 140 },
+	{ "1280x1024 76Hz", 1280, 1024, 76, false, 140 },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, 64 },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, 64 },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, 64 },
+	{ "1024x768 70Hz", 1024, 768, 70, false, 75 },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, 64 },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, 64 },
+	{ "1280x1024 72Hz", 1280, 1024, 72, false, 130 },
+	{ "1280x1024 60Hz", 1280, 1024, 60, false, 108 },
+	{ "1280x1024 76Hz", 1280, 1024, 76, false, 140 },
+	{ "1280x1024 60Hz", 1280, 1024, 60, false, 108 },
+	{ "1280x1024 60Hz", 1280, 1024, 60, false, 108 },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, 64 },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, 64 },
 };
 
 struct newport_softc {
@@ -109,6 +111,8 @@ struct newport_devconfig {
 	bus_space_tag_t		dc_st;
 	bus_space_handle_t	dc_sh;
 	bus_addr_t		dc_addr;
+
+	struct newport_softc	*dc_sc;
 
 	int			dc_boardrev;
 	int			dc_vc2rev;
@@ -433,6 +437,20 @@ xmap9_wait(struct newport_devconfig *dc)
 }
 
 /*
+ * Map the pixel clock frequency to which parameters to use for XMAP9
+ * mode writes.
+ */
+static const struct newport_dcb_cs_params *
+newport_hw_get_mode_cs_params(int cfreq)
+{
+	if (cfreq > 119)
+		return &newport_dcb_cs_fast;
+	if (cfreq > 59)
+		return &newport_dcb_cs_slow;
+	return &newport_dcb_cs_wslow;
+}
+
+/*
  * Write out the 32 bit mode entry to both XMAP9 chips.
  *
  * This is actually a fun clock domain crossing problem - the
@@ -461,12 +479,12 @@ xmap9_wait(struct newport_devconfig *dc)
 static void
 xmap9_write_mode(struct newport_devconfig *dc, uint8_t index, uint32_t mode)
 {
-	struct newport_dcb_cs_params *cs;
+	const struct newport_dcb_cs_params *cs;
 	uint8_t id;
 
 	/* Fetch the monitor ID and then the CS parameters to use */
 	id = newport_get_monitor_id(dc);
-	cs = newport_monitor_list[id].mode_params;
+	cs = newport_hw_get_mode_cs_params(newport_monitor_list[id].cfreq);
 
 	/* wait for FIFO if needed */
 	xmap9_wait(dc);

@@ -54,7 +54,49 @@ __KERNEL_RCSID(0, "$NetBSD: newport.c,v 1.23 2021/08/07 16:19:04 thorpej Exp $")
 #include <sgimips/gio/newportvar.h>
 #include <sgimips/gio/newportreg.h>
 
-extern int mach_subtype;
+struct newport_dcb_cs_params {
+	int cs_width;
+	int cs_hold;
+	int cs_setup;
+};
+
+struct newport_monitor_entry {
+	const char *monitor;
+	int x;
+	int y;
+	int hz;
+	bool unknown;
+	struct newport_dcb_cs_params *mode_params;
+};
+
+/* 1024x768 60hz, 1280x1024 60hz */
+static struct newport_dcb_cs_params newport_dcb_cs_slow = { 0, 5, 5 };
+/* 1280x1024, 76Hz */
+static struct newport_dcb_cs_params newport_dcb_cs_fast = { 0, 1, 2 };
+
+/*
+ * This (ideally) matches what the boot firmware is configuring as monitor
+ * parameters in the RAMDAC, VC2, etc chips.
+ */
+static struct newport_monitor_entry newport_monitor_list[] = {
+	/* Firmware monitor IDs */
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1280x1024 76Hz", 1280, 1024, 76, false, &newport_dcb_cs_fast },
+	{ "1280x1024 76Hz", 1280, 1024, 76, false, &newport_dcb_cs_fast },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1024x768 76Hz", 1024, 768, 70, false, &newport_dcb_cs_fast },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1280x1024 72Hz", 1280, 1024, 72, false, &newport_dcb_cs_fast },
+	{ "1280x1024 60Hz", 1280, 1024, 60, false, &newport_dcb_cs_slow },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1280x1024 60Hz", 1280, 1024, 60, false, &newport_dcb_cs_slow },
+	{ "1280x1024 60Hz", 1280, 1024, 60, false, &newport_dcb_cs_slow },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+	{ "1024x768 60Hz (unknown)", 1024, 768, 60, true, &newport_dcb_cs_slow },
+};
 
 struct newport_softc {
 	device_t sc_dev;
@@ -137,31 +179,66 @@ static int newport_is_console = 0;
 uint8_t our_cmap[768];
 
 /*
- * Return the active monitor ID.
+ * Return the monitor ID which hopefully matches the firmware selection.
  *
  * The firmware first checks to see if it's an unknown monitor
  * type.  If it is, then the prom ID can override it.
  * If it is a detected and known monitor then that is returned.
  *
- * TODO: this is intentionally wrong until the monitor table is
- * added!
+ * Note that unknown monitor IDs for the SGI Indy is
+ * 1024x768 60Hz, but for Indigo2 is 1280x1024 60Hz.
+ *
+ * Note that for boardrev < 4, the firmware seems to limit
+ * the refresh rate to 72Hz, so don't allow 1280x1024 76Hz.
  */
-static int
+static uint8_t
 newport_get_monitor_id(struct newport_devconfig *dc)
 {
-	if (dc->dc_monitor_prom_id != -1)
-		return (dc->dc_monitor_prom_id);
+	uint8_t id;
 
-	return (dc->dc_monitor_cmap_id);
+	id = dc->dc_monitor_cmap_id;
+	KASSERT((id < 16));
+	if (id > 15)
+		id = 0;
+
+	/*
+	 * Unknown monitors on Indigo2 are 1280x1024 60Hz,
+	 * on Indy is 1024x768 60Hz unless configured in PROM.
+	 */
+	if (newport_monitor_list[id].unknown == true) {
+		if (mach_subtype == MACH_SGI_IP22_FULLHOUSE) {
+			/* Default to 1280x1024 60Hz */
+			id = 10;
+		} else if (dc->dc_monitor_prom_id != -1)
+			id = dc->dc_monitor_prom_id;
+	}
+
+	/*
+	 * Check board revision, bump down to 72Hz if needed.
+	 */
+	if ((dc->dc_boardrev < 4) && (newport_monitor_list[id].x == 1280)
+	    && (newport_monitor_list[id].hz > 72))
+		/* 1280x1024, 72Hz */
+		id = 9;
+
+	/* Cap for sanity reasons */
+	KASSERT((id < 16));
+	if (id > 15)
+		id = 0;
+
+	return (id);
 }
 
 /*
- * Return the string representation of the active monitor ID.
+ * Return the string representation of the monitor ID.
+ *
+ * This is the monitor ID that has already been populated
+ * via the probe routines.
  */
 static const char *
 newport_get_monitor_str(struct newport_devconfig *dc)
 {
-	return ("(TBD)");
+	return (newport_monitor_list[newport_get_monitor_id(dc)].monitor);
 }
 
 /**** Low-level hardware register groveling functions ****/
@@ -369,6 +446,13 @@ xmap9_wait(struct newport_devconfig *dc)
 static void
 xmap9_write_mode(struct newport_devconfig *dc, uint8_t index, uint32_t mode)
 {
+	struct newport_dcb_cs_params *cs;
+	uint8_t id;
+
+	/* Fetch the monitor ID and then the CS parameters to use */
+	id = newport_get_monitor_id(dc);
+	cs = newport_monitor_list[id].mode_params;
+
 	/* wait for FIFO if needed */
 	xmap9_wait(dc);
 
@@ -376,17 +460,9 @@ xmap9_write_mode(struct newport_devconfig *dc, uint8_t index, uint32_t mode)
 	    REX3_DCBMODE_DW_4 |
 	    (NEWPORT_DCBADDR_XMAP_BOTH << REX3_DCBMODE_DCBADDR_SHIFT) |
 	    (XMAP9_DCBCRS_MODE_SETUP << REX3_DCBMODE_DCBCRS_SHIFT) |
-#if 0
-	/* Timing for 1280x1024x76Hz */
-	    (0 << REX3_DCBMODE_CSWIDTH_SHIFT) |
-	    (1 << REX3_DCBMODE_CSHOLD_SHIFT) |
-	    (2 << REX3_DCBMODE_CSSETUP_SHIFT)
-#else
-	/* Timing for 1024x760x60Hz, 1280x1024x60Hz */
-	    (0 << REX3_DCBMODE_CSWIDTH_SHIFT) |
-	    (5 << REX3_DCBMODE_CSHOLD_SHIFT) |
-	    (5 << REX3_DCBMODE_CSSETUP_SHIFT)
-#endif
+	    (cs->cs_width << REX3_DCBMODE_CSWIDTH_SHIFT) |
+	    (cs->cs_hold << REX3_DCBMODE_CSHOLD_SHIFT) |
+	    (cs->cs_setup << REX3_DCBMODE_CSSETUP_SHIFT)
 	);
 	rex3_write(dc, REX3_REG_DCBDATA0, (index << 24) | (mode & 0xffffff));
 }
@@ -924,10 +1000,15 @@ newport_attach(device_t parent, device_t self, void *aux)
 
 	aprint_naive(": Display adapter\n");
 
-	aprint_normal(": SGI NG1 (board revision %d, cmap revision %d, xmap revision %d, vc2 revision %d), depth %d\n",
+	aprint_normal(": SGI NG1 (board revision %d, cmap revision %d, "
+	    "xmap revision %d, vc2 revision %d), depth %d, monitor ID %d "
+	    "(%s)\n",
 	    sc->sc_dc->dc_boardrev, sc->sc_dc->dc_cmaprev,
-	    sc->sc_dc->dc_xmaprev, sc->sc_dc->dc_vc2rev, sc->sc_dc->dc_depth);
-	aprint_normal("%s: 13W3 Monitor ID %d, PROM ID %d, Monitor ID %d (%s)\n",
+	    sc->sc_dc->dc_xmaprev, sc->sc_dc->dc_vc2rev, sc->sc_dc->dc_depth,
+	    newport_get_monitor_id(sc->sc_dc),
+	    newport_get_monitor_str(sc->sc_dc));
+	aprint_normal("%s: 13W3 Monitor ID %d, PROM ID %d, determined "
+	    "monitor ID %d (%s)\n",
 	    device_xname(self),
 	    sc->sc_dc->dc_monitor_cmap_id,
 	    sc->sc_dc->dc_monitor_prom_id,

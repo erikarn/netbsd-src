@@ -436,6 +436,25 @@ xmap9_wait(struct newport_devconfig *dc)
 	xmap9_wait_chip(dc, NEWPORT_DCBADDR_XMAP_1);
 }
 
+#if 0
+static uint32_t
+xmap9_read_mode(struct newport_devconfig *dc, int chip, uint8_t idx)
+{
+	uint32_t mode = 0, val;
+	int i;
+
+	xmap9_wait_chip(dc, chip);
+
+	for (i = 0; i < 4; i++) {
+		xmap9_write(dc, chip, XMAP9_DCBCRS_MODE_SELECT,
+		    (idx << 2) | i);
+		val = xmap9_read(dc, chip, XMAP9_DCBCRS_MODE_SETUP);
+		mode |= (val << (i * 8));
+	}
+	return (mode);
+}
+#endif
+
 /*
  * Map the pixel clock frequency to which parameters to use for XMAP9
  * mode writes.

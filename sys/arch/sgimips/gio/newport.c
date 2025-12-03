@@ -709,7 +709,7 @@ newport_probe_monitor(struct newport_devconfig *dc)
 	 */
 	scratch = cmap_reg_read(dc, NEWPORT_DCBADDR_CMAP_1,
 	    CMAP_DCBCRS_REVISION);
-	aprint_normal("%s: CMAP_1 REVISION 0x%02x\n", __func__, scratch);
+	aprint_debug("%s: CMAP_1 REVISION 0x%02x\n", __func__, scratch);
 	dc->dc_monitor_cmap_id = (scratch >> 4) & 0x0f;
 	dc->dc_monitor_prom_id = -1;
 
@@ -752,7 +752,7 @@ newport_probe_hw(struct newport_devconfig *dc)
 	rex3_wait_bfifo(dc);
 	scratch = cmap_reg_read(dc, NEWPORT_DCBADDR_CMAP_0,
 	    CMAP_DCBCRS_REVISION);
-	aprint_normal("%s: CMAP_0 REVISION 0x%02x\n", __func__, scratch);
+	aprint_debug("%s: CMAP_0 REVISION 0x%02x\n", __func__, scratch);
 
 	dc->dc_boardrev = (scratch >> 4) & 0x07;
 	dc->dc_cmaprev = scratch & 0x07;
@@ -762,12 +762,12 @@ newport_probe_hw(struct newport_devconfig *dc)
 	    XMAP9_DCBCRS_REVISION) & 0x07;
 	dc->dc_depth = ( (dc->dc_boardrev > 1) && (scratch & 0x80)) ? 8 : 24;
 
-	aprint_normal("%s: XMAP_0 REVISION: 0x%08x\n", __func__,
+	aprint_debug("%s: XMAP_0 REVISION: 0x%08x\n", __func__,
 	    xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0, XMAP9_DCBCRS_REVISION));
 
 	scratch = vc2_read_ireg(dc, VC2_IREG_CONFIG);
 	dc->dc_vc2rev = (scratch & VC2_IREG_CONFIG_REVISION) >> 5;
-	aprint_normal("%s: VC2_IREG_CONFIG config: 0x%04x\n", __func__, scratch);
+	aprint_debug("%s: VC2_IREG_CONFIG config: 0x%04x\n", __func__, scratch);
 }
 
 /*
@@ -897,13 +897,13 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 	newport_hw_adjust_xmap_cfg(dc, &dcbcfg);
 	rex3_wait_bfifo(dc);
 	xmap9_write(dc, NEWPORT_DCBADDR_XMAP_0, XMAP9_DCBCRS_CONFIG, dcbcfg);
-	aprint_normal("%s: XMAP_0 config: 0x%02x\n", __func__, dcbcfg);
+	aprint_debug("%s: XMAP_0 config: 0x%02x\n", __func__, dcbcfg);
 
 	dcbcfg = xmap9_read(dc, NEWPORT_DCBADDR_XMAP_1, XMAP9_DCBCRS_CONFIG);
 	newport_hw_adjust_xmap_cfg(dc, &dcbcfg);
 	rex3_wait_bfifo(dc);
 	xmap9_write(dc, NEWPORT_DCBADDR_XMAP_1, XMAP9_DCBCRS_CONFIG, dcbcfg);
-	aprint_normal("%s: XMAP_1 config: 0x%02x\n", __func__, dcbcfg);
+	aprint_debug("%s: XMAP_1 config: 0x%02x\n", __func__, dcbcfg);
 
 	if (depth == 8) {
 		/*

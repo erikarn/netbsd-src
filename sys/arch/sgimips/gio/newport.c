@@ -758,7 +758,7 @@ newport_probe_hw(struct newport_devconfig *dc)
  * hardware type.
  */
 static void
-newport_adjust_dcbcfg(struct newport_devconfig *dc, uint8_t *dcbcfg)
+newport_hw_adjust_xmap_cfg(struct newport_devconfig *dc, uint8_t *dcbcfg)
 {
 
 	/* Configure 8 or 24 bit hardware */
@@ -767,32 +767,11 @@ newport_adjust_dcbcfg(struct newport_devconfig *dc, uint8_t *dcbcfg)
 	else
 		*dcbcfg &= ~XMAP9_CONFIG_8BIT_SYSTEM;
 
-	/*
-	 * Configure which RGB map to use for external video.
-	 *
-	 * Since we're initialising an 24 bit RGB map in RGB2, we
-	 * should be OK using this.
-	 *
-	 * Note that nothing right now is supported in the video
-	 * expansion slot on the newport cards, but just in case..
-	 */
-	*dcbcfg &= ~0x30;
-	*dcbcfg |= XMAP9_CONFIG_RGBMAP_2;
-
-	/* TODO: disable PUP, we don't use it */
+	/* XXX TODO: we aren't using PUP, so disable it? */
 
 	/*
-	 * TODO: technically we should setup the two XMAPs for
-	 * odd and even pixel values.  However right now
-	 * we don't have write routines to target single
-	 * XMAPs.
-	 */
-
-	/*
-	 * TODO: we should choose fast or slow pclk and
-	 * the timing used in the DCB based on the pixel clock.
-	 * The firmware sets up something based on the attached
-	 * monitor but X11 can trash it.
+	 * Note: we're leaving the event/odd, fast/slow pclk,
+	 * video option board config and colourmap alone.
 	 */
 }
 
@@ -896,12 +875,16 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 	 */
 	rex3_wait_bfifo(dc);
 	dcbcfg = xmap9_read(dc, NEWPORT_DCBADDR_XMAP_0, XMAP9_DCBCRS_CONFIG);
-	aprint_debug("dcbcfg: was %02x\n", dcbcfg);
-	newport_adjust_dcbcfg(dc, &dcbcfg);
-
+	newport_hw_adjust_xmap_cfg(dc, &dcbcfg);
 	rex3_wait_bfifo(dc);
-	xmap9_write(dc, NEWPORT_DCBADDR_XMAP_BOTH, XMAP9_DCBCRS_CONFIG, dcbcfg);
-	aprint_debug("dcbcfg: now %02x\n", dcbcfg);
+	xmap9_write(dc, NEWPORT_DCBADDR_XMAP_0, XMAP9_DCBCRS_CONFIG, dcbcfg);
+	aprint_normal("%s: XMAP_0 config: 0x%02x\n", __func__, dcbcfg);
+
+	dcbcfg = xmap9_read(dc, NEWPORT_DCBADDR_XMAP_1, XMAP9_DCBCRS_CONFIG);
+	newport_hw_adjust_xmap_cfg(dc, &dcbcfg);
+	rex3_wait_bfifo(dc);
+	xmap9_write(dc, NEWPORT_DCBADDR_XMAP_1, XMAP9_DCBCRS_CONFIG, dcbcfg);
+	aprint_normal("%s: XMAP_1 config: 0x%02x\n", __func__, dcbcfg);
 
 	if (depth == 8) {
 		/*
@@ -911,22 +894,6 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		 */
 		newport_setup_hw_xmap9_modes(dc, XMAP9_MODE_GAMMA_BYPASS |
 		    XMAP9_MODE_PIXSIZE_8BPP | XMAP9_MODE_PIXMODE_CI);
-
-		/* Setup REX3 */
-		rex3_write(dc, REX3_REG_XYWIN, (4096 << 16) | 4096);
-		rex3_write(dc, REX3_REG_TOPSCAN, 0x3ff); /* XXX Why? XXX */
-
-		/* Setup CMAP for an RGB 332 packing */
-		newport_setup_hw_ci_cmap(dc);
-
-		/*
-		 * Write a ramp into RGB2 cmap
-		 *
-		 * Note this shouldn't be used in 8 bit mode / on an 8 bit
-		 * card because the XMAP9's have been programmed to use
-		 * PIXMODE_CI.
-		 */
-		newport_setup_hw_rgb2_cmap(dc);
 	} else {
 		/*
 		 * Configure the hardware to use the a 24 bit RGB table at
@@ -934,14 +901,30 @@ newport_setup_hw(struct newport_devconfig *dc, int depth)
 		 */
 		newport_setup_hw_xmap9_modes(dc, XMAP9_MODE_GAMMA_BYPASS |
 		    XMAP9_MODE_PIXSIZE_24BPP | XMAP9_MODE_PIXMODE_RGB2);
-	
-		/* Setup REX3 */
-		rex3_write(dc, REX3_REG_XYWIN, (4096 << 16) | 4096);
-		rex3_write(dc, REX3_REG_TOPSCAN, 0x3ff); /* XXX Why? XXX */
-
-		/* Write a ramp into RGB2 cmap */
-		newport_setup_hw_rgb2_cmap(dc);
 	}
+
+	/* Setup REX3 */
+	rex3_write(dc, REX3_REG_XYWIN, (4096 << 16) | 4096);
+	rex3_write(dc, REX3_REG_TOPSCAN, 0x3ff); /* XXX Why? XXX */
+
+	/*
+	 * Setup CMAP CI table 0 for an RGB 332 packing.
+	 *
+	 * This will be used by 8 bit RGB pixel modes so we can use
+	 * RGB 332 and not have to teach the NetBSD console code or
+	 * this driver to map RGB 332 -> the Newport interlaced RGB8 format.
+	 */
+	newport_setup_hw_ci_cmap(dc);
+
+	/*
+	 * Write a ramp into RGB2 CMAP.
+	 *
+	 * This won't be used in 8 bit console mode as that is using
+	 * CI pixels, not RGB8 pixels.  For 8 bit framebuffer mode it'll
+	 * either use the RGB332 table programmed into CMAP CI table 0
+	 * or X11 will allocate private colourmaps as needed.
+	 */
+	newport_setup_hw_rgb2_cmap(dc);
 }
 
 /**** Attach routines ****/

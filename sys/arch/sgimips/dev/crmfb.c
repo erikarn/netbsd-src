@@ -162,6 +162,7 @@ struct crmfb_softc {
 	int			sc_wsmode, sc_video_on;
 	uint8_t			sc_edid_data[128];
 	struct edid_info 	sc_edid_info;
+	int			sc_edid_data_valid;
 
 	/* cursor stuff */
 	int			sc_cur_x;
@@ -415,6 +416,9 @@ crmfb_attach(device_t parent, device_t self, void *opaque)
 	aa.accesscookie = &sc->sc_vd;
 
 	config_found(self, &aa, wsemuldisplaydevprint, CFARGS_NONE);
+
+	if (sc->sc_edid_data_valid)
+		edid_print(&sc->sc_edid_info);
 
 	sc->sc_cur_x = 0;
 	sc->sc_cur_y = 0;
@@ -1629,7 +1633,7 @@ crmfb_setup_ddc(struct crmfb_softc *sc)
 		    "had to try %d times to get EDID data\n", i);
 	if (i < 11) {
 		edid_parse(sc->sc_edid_data, &sc->sc_edid_info);
-		edid_print(&sc->sc_edid_info);
+		sc->sc_edid_data_valid = true;
 	}
 }
 

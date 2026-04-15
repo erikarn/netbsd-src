@@ -2204,6 +2204,7 @@ mips_page_physload(vaddr_t vkernstart, vaddr_t vkernend,
 		const paddr_t segfinish = trunc_page(segs->start + segs->size);
 
 		if (segstart >= segfinish) {
+#if 0
 			/*
 			 * This is purely cosmetic, to avoid output like
 			 *    phys segment: 0xffffffffffffe000 @ 0xffb6000
@@ -2211,11 +2212,14 @@ mips_page_physload(vaddr_t vkernstart, vaddr_t vkernend,
 			 */
 			printf("phys segment: %#"PRIxPADDR" @ %#"PRIxPADDR
 			    " (short)\n", (paddr_t)segs->size, segstart);
+#endif
 			continue;
 		}
 
+#if 0
 		printf("phys segment: %#"PRIxPADDR" @ %#"PRIxPADDR"\n",
 		    segfinish - segstart, segstart);
+#endif
 
 		/*
 		 * Page 0 is reserved for exception vectors.
@@ -2312,8 +2316,10 @@ mips_page_physload(vaddr_t vkernstart, vaddr_t vkernend,
 			/*
 			 * Now we give this segment to uvm.
 			 */
+#if 0
 			printf("adding %#"PRIxPADDR" @ %#"PRIxPADDR" to freelist %d\n",
 			    segend - segstart, segstart, freelist);
+#endif
 			paddr_t first = atop(segstart);
 			paddr_t last = atop(segend);
 			uvm_page_physload(first, last, first, last, freelist);

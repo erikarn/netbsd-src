@@ -56,6 +56,8 @@ NESTED(arcbios_4orless_args, CALLFRAME_SIZ, ra)
 	REG_S	ra, CALLFRAME_RA(sp)
 	REG_S	s0, CALLFRAME_SP(sp)
 
+// TODO: enable FPU
+
 	PTR_L	t9, _C_LABEL(ARCBIOS)
 	nop
 	PTR_ADDU t9, t0
@@ -66,6 +68,8 @@ NESTED(arcbios_4orless_args, CALLFRAME_SIZ, ra)
 	 move	s0, MIPS_CURLWP
 
 	FIX_V0
+
+// TODO: disable FPU
 
 	move	MIPS_CURLWP, s0
 
@@ -98,6 +102,8 @@ NESTED(arcbios_5to8_args, CALLFRAME2_SIZ, ra)
 	INT_S	a7, 28(sp)			# save 8th arg on stack (o32)
 #endif
 
+// TODO: enable FPU
+
 	PTR_L	t9, _C_LABEL(ARCBIOS)
 	nop
 	PTR_ADDU t9, t0
@@ -108,6 +114,8 @@ NESTED(arcbios_5to8_args, CALLFRAME2_SIZ, ra)
 	 move	s0, MIPS_CURLWP
 
 	FIX_V0
+
+// TODO: disable FPU
 
 	move	MIPS_CURLWP, s0
 

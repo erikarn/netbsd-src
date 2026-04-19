@@ -165,8 +165,10 @@ EXPORT_OBJECT(kernel_text)			# libkvm refers this
 	cfc1	t1, MIPS_FIR
 
 	/* Disable again, we don't want it on in the kernel */
+#if 0
 	and	k0, ~MIPS_SR_COP_1_BIT
 	mtc0	k0, MIPS_COP_0_STATUS
+#endif
 #endif
 
 	INT_S	t0, _C_LABEL(mips_options)+MO_CPU_ID # save PRID register

@@ -110,6 +110,11 @@ ioc_attach(device_t parent, device_t self, void *aux)
 
 	sysid = bus_space_read_4(sc->sc_iot, sc->sc_ioh, IOC_SYSID) & 0x01;
 
+	/*
+	 * NOTE: this has to happen before mach_subtype is used -
+	 * including for dev/int.c.  So it's initialised earlier
+	 * in sgimips/machdep.c for early boot.
+	 */
 	if (sysid)
 		mach_subtype = MACH_SGI_IP22_FULLHOUSE;
 	else

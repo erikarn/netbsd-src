@@ -683,6 +683,11 @@ int_8254_intr1(vaddr_t pc, uint32_t status, uint32_t ipending)
 	splx(s);
 }
 
+/*
+ * This is used by grtwo to wait for the graphics FIFO to be available.
+ * Unfortunately this path isn't initialised early enough for fast
+ * graphics to be available - this device needs to be initialised.
+ */
 void
 int2_wait_fifo(uint32_t flag)
 {

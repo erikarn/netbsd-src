@@ -263,6 +263,7 @@ macekbc_send_devcmd(void *opaque, pckbport_slot_t slot, u_char byte)
 	struct macekbc_internal	*t;
 	bus_space_tag_t iot;
 	bus_space_handle_t ioh;
+	uint32_t ctrl;
 
 	t = opaque;
 	iot = t->t_iot;
@@ -271,7 +272,31 @@ macekbc_send_devcmd(void *opaque, pckbport_slot_t slot, u_char byte)
 	if (macekbc_wait(t, slot, MACEKBC_STAT_TXEMPTY, 1))
 		return 0;
 
+	/* Before sending a byte to a device, the clock needs
+	 * to be inhibited so the device knows it should
+	 * abort transmitting data and get ready to send the
+	 * controller clock pulses so the controller can shift
+	 * out data.
+	 */
+
+	/* Save the config */
+	ctrl = bus_space_read_8(iot, ioh, MACEKBC_CTRL);
+
+	/* Disable TX/RX, inhibit clock */
+	bus_space_write_8(iot, ioh, MACEKBC_CTRL, 0);
+
+	/* 100uS delay to ensure the device sees it */
+	delay(100);
+
+	/* Populate byte to write */
 	bus_space_write_8(iot, ioh, MACEKBC_TX, byte & 0xff);
+
+	/*
+	 * Enable TX/RX, device will generate clock, controller
+	 * will clock out bytes
+	 */
+	bus_space_write_8(iot, ioh, MACEKBC_CTRL,
+	    ctrl | MACEKBC_CTRL_RXCLKON | MACEKBC_CTRL_TXON);
 
 	return 1;
 }

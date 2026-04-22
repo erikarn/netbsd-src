@@ -112,15 +112,6 @@ consinit(void)
 			return;
 #if (NCRMFB > 0)
 		if (crmfb_probe()) {
-#if notyet
-#if (NPCKBC > 0)
-			/* XXX Hardcoded iotag, MACE address XXX */
-			mace_init_bus();
-			pckbc_cnattach(mace_isa_memt,
-			    MACE_BASE + 0x320000, 8,
-			    PCKBC_KBD_SLOT, 0);
-#endif
-#endif
 			return;
 		}
 #else

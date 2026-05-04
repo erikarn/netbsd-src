@@ -97,6 +97,7 @@ int pckbc_poll_data1(void *, pckbc_slot_t);
 /* More normal calls from attach routines */
 void pckbc_attach(struct pckbc_softc *);
 int pckbc_cnattach(bus_space_tag_t, bus_addr_t, bus_size_t, pckbc_slot_t, int);
+int pckbc_cnattach2(pckbc_slot_t, int);
 int pckbc_is_console(bus_space_tag_t, bus_addr_t);
 int pckbcintr(void *);
 int pckbcintr_hard(void *);

@@ -162,6 +162,7 @@ zs_serial_init(const char *consdev)
 static int
 gio_video_init(const char *consdev)
 {
+	printf("%s: called; consdev=%s\n", __func__, consdev);
 #if (NGIO > 0)
 	if (strcmp(consdev, "video()") == 0) {
 		/*
@@ -181,13 +182,11 @@ gio_video_init(const char *consdev)
 			break;
 
 		case MACH_SGI_IP22:
-#if (NPCKBC > 0)
-			/* XXX Hardcoded iotag, HPC address XXX */
-			pckbc_cnattach(normal_memt,
-			    HPC_BASE_ADDRESS_0 +
-			    HPC3_PBUS_CH6_DEVREGS + IOC_KB_REGS, KBCMDP,
-			    PCKBC_KBD_SLOT, 0);
-#endif
+			/*
+			 * Note: console keyboard input is now done in
+			 * hpc/pckbd_hpc.c so it can take advantage of the
+			 * HPC busdma tag and other setup bits.
+			 */
 			break;
 		}
 

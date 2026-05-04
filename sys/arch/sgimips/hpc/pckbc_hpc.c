@@ -48,6 +48,9 @@ __KERNEL_RCSID(0, "$NetBSD: pckbc_hpc.c,v 1.11 2020/11/21 17:18:31 thorpej Exp $
 #include <machine/autoconf.h>
 #include <machine/machtype.h>
 
+#include <dev/arcbios/arcbios.h>
+#include <dev/arcbios/arcbiosvar.h>
+
 #include <dev/ic/i8042reg.h>
 #include <dev/ic/pckbcvar.h>
 
@@ -86,6 +89,7 @@ pckbc_hpc_attach(device_t parent, device_t self, void *aux)
 	struct pckbc_softc *sc = &msc->sc_pckbc;
 	struct hpc_attach_args *haa = aux;
 	struct pckbc_internal *t;
+	const char *consdev;
 	bus_space_handle_t ioh_d, ioh_c;
 
 	sc->sc_dv = self;
@@ -96,12 +100,10 @@ pckbc_hpc_attach(device_t parent, device_t self, void *aux)
 
 	sc->intr_establish = pckbc_hpc_intr_establish;
 
-	/* XXX Ugly hack & kludge XXX */
-	if (pckbc_is_console(haa->ha_st, MIPS_KSEG1_TO_PHYS(haa->ha_sh +
-	    haa->ha_devoff))) {
-		t = &pckbc_consdata;
-		pckbc_console_attached = 1;
-	} else {
+	printf("%s: [adrian]: called\n", __func__);
+
+	/* Setup keyboard device */
+	{
 		/* XXX should be bus_space_map() */
 		if (bus_space_subregion(haa->ha_st, haa->ha_sh,
 					haa->ha_devoff + KBDATAP, 1, &ioh_d) ||
@@ -122,6 +124,21 @@ pckbc_hpc_attach(device_t parent, device_t self, void *aux)
 	sc->id = t;
 
 	aprint_normal("\n");
+
+	consdev = arcbios_GetEnvironmentVariable("ConsoleIn");
+	if (consdev != NULL && strcmp(consdev, "keyboard()") == 0) {
+		/* Console attach */
+		/* TODO: this should be in pckbc, not here */
+		memset(&pckbc_consdata, 0, sizeof(pckbc_consdata));
+		pckbc_consdata.t_iot = hpc_memt;
+		pckbc_consdata.t_ioh_d = ioh_d;
+		pckbc_consdata.t_ioh_c = ioh_c;
+		pckbc_consdata.t_addr = haa->ha_sh;
+		pckbc_consdata.t_cmdbyte = KC8_CPU;
+		pckbc_consdata.t_flags = 0;
+
+		pckbc_cnattach2(PCKBPORT_KBD_SLOT, 0);
+	}
 
 	/* Finish off the attach. */
 	pckbc_attach(sc);

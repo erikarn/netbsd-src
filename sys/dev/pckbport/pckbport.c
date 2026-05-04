@@ -235,6 +235,24 @@ pckbport_slot_enable(pckbport_tag_t t, pckbport_slot_t slot, int on)
 void
 pckbport_set_poll(pckbport_tag_t t, pckbport_slot_t slot, int on)
 {
+	if (t == NULL) {
+		printf("%s: t is NULL!\n", __func__);
+		return;
+	}
+
+	if (t->t_slotdata[slot] == NULL) {
+		printf("%s: t->t_slotdata[%d] is NULL!\n", __func__, slot);
+		return;
+	}
+
+	if (t->t_ops == NULL) {
+		printf("%s: t->ops is NULL!\n", __func__);
+		return;
+	}
+	if (t->t_ops->t_set_poll == NULL) {
+		printf("%s: t->ops->t_set_poll is NULL!\n", __func__);
+		return;
+	}
 
 	t->t_slotdata[slot]->polling = on;
 	t->t_ops->t_set_poll(t->t_cookie, slot, on);
@@ -583,6 +601,8 @@ pckbport_cnattach(void *cookie, struct pckbport_accessops const *ops,
 	int res = 0;
 	pckbport_tag_t t = &pckbport_cntag;
 
+	printf("%s: called\n", __func__);
+
 	callout_init(&t->t_cleanup, 0);
 	t->t_cookie = cookie;
 	t->t_ops = ops;
@@ -597,6 +617,7 @@ pckbport_cnattach(void *cookie, struct pckbport_accessops const *ops,
 #else
 	res = ENXIO;
 #endif /* NPCKBPORT_MACHDEP_CNATTACH > 0 */
+	printf("%s: res at this point is %d\n", __func__, res);
 
 	if (res == 0) {
 		t->t_slotdata[slot] = &pckbport_cons_slotdata;

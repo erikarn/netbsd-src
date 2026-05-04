@@ -82,6 +82,8 @@ sgimips_bus_dma_init(void)
 	normal_bus_mem_init(&normal_mbst, NULL);
 	normal_memt = &normal_mbst;
 
+	printf("%s: [adrian]: called\n", __func__);
+
 #ifdef MIPS1
 	switch (mach_type) {
 	/* R2000/R3000 */

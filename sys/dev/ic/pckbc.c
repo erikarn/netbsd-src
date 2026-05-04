@@ -231,6 +231,16 @@ pckbc_send_devcmd(void *pt, pckbc_slot_t slot, u_char val)
 int
 pckbc_is_console(bus_space_tag_t iot, bus_addr_t addr)
 {
+
+	printf("%s: pckbc_console=%d, attached=%d, cons.iot=0x%x, iot=0x%x cons.addr=0x%x, addr=0x%x\n",
+	    __func__,
+	    pckbc_console,
+	    pckbc_console_attached,
+	    (uint32_t) pckbc_consdata.t_iot,
+	    (uint32_t) iot,
+	    (uint32_t) pckbc_consdata.t_addr,
+	    (uint32_t) addr);
+
 	if (pckbc_console && !pckbc_console_attached &&
 	    bus_space_is_equal(pckbc_consdata.t_iot, iot) &&
 	    pckbc_consdata.t_addr == addr)
@@ -618,12 +628,19 @@ pckbc_cnattach(bus_space_tag_t iot, bus_addr_t addr,
 #endif
 	int res = 0;
 
-	if (bus_space_map(iot, addr + KBDATAP, 1, 0, &ioh_d))
-		return (ENXIO);
-	if (bus_space_map(iot, addr + cmd_offset, 1, 0, &ioh_c)) {
-		bus_space_unmap(iot, ioh_d, 1);
+	printf("%s: called; slot=%d\n", __func__, slot);
+
+	if (bus_space_map(iot, addr + KBDATAP, 1, 0, &ioh_d)) {
+		printf("%s: failed KBDATAP map\n", __func__);
 		return (ENXIO);
 	}
+	if (bus_space_map(iot, addr + cmd_offset, 1, 0, &ioh_c)) {
+		bus_space_unmap(iot, ioh_d, 1);
+		printf("%s: failed cmd_offset (%d) map\n", __func__,
+		    (int) cmd_offset);
+		return (ENXIO);
+	}
+	printf("%s: address space mapped ok\n", __func__);
 
 	memset(&pckbc_consdata, 0, sizeof(pckbc_consdata));
 	pckbc_consdata.t_iot = iot;
@@ -664,6 +681,7 @@ pckbc_cnattach(bus_space_tag_t iot, bus_addr_t addr,
 	}
 
 	res = pckbport_cnattach(&pckbc_consdata, &pckbc_ops, slot);
+	printf("%s: pckbport_cnattach() returned %d\n", __func__, res);
 
   out:
 	if (res) {
@@ -675,6 +693,63 @@ pckbc_cnattach(bus_space_tag_t iot, bus_addr_t addr,
 		pckbc_console = 1;
 	}
 
+	printf("%s: finished; res=%d\n", __func__, res);
+	return (res);
+}
+
+int
+pckbc_cnattach2(pckbc_slot_t slot, int flags)
+{
+#ifdef PCKBC_CNATTACH_SELFTEST
+	int reply;
+#endif
+	int res = 0;
+
+	printf("%s: called; slot=%d\n", __func__, slot);
+
+	callout_init(&pckbc_consdata.t_cleanup, 0);
+
+	/* flush */
+	(void) pckbc_poll_data1(&pckbc_consdata, PCKBC_KBD_SLOT);
+
+#ifdef PCKBC_CNATTACH_SELFTEST
+	/*
+	 * In some machines (e.g. netwinder) pckbc refuses to talk at
+	 * all until we request a self-test.
+	 */
+	if (!pckbc_send_cmd(iot, ioh_c, KBC_SELFTEST)) {
+		printf("pckbc: unable to request selftest\n");
+		res = EIO;
+		goto out;
+	}
+
+	reply = pckbc_poll_data1(&pckbc_consdata, PCKBC_KBD_SLOT);
+	if (reply != 0x55) {
+		printf("pckbc: selftest returned 0x%02x\n", reply);
+		res = EIO;
+		goto out;
+	}
+#endif /* PCKBC_CNATTACH_SELFTEST */
+
+	/* init cmd byte, enable ports */
+	pckbc_consdata.t_cmdbyte = KC8_CPU;
+	if (!pckbc_put8042cmd(&pckbc_consdata)) {
+		printf("pckbc: cmd word write error\n");
+		res = EIO;
+		goto out;
+	}
+
+	res = pckbport_cnattach(&pckbc_consdata, &pckbc_ops, slot);
+	printf("%s: pckbport_cnattach() returned %d\n", __func__, res);
+
+  out:
+	if (!res) {
+		pckbc_consdata.t_slotdata[slot] = &pckbc_cons_slotdata;
+		pckbc_init_slotdata(&pckbc_cons_slotdata);
+		pckbc_console = 1;
+	}
+
+	printf("%s: finished; res=%d\n", __func__, res);
 	return (res);
 }
 

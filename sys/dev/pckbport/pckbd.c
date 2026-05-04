@@ -184,6 +184,8 @@ pckbd_set_xtscancode(pckbport_tag_t kbctag, pckbport_slot_t kbcslot,
 	int xt, res = 0;
 	u_char cmd[2];
 
+	printf("%s: called, slot=%d\n", __func__, kbcslot);
+
 	/*
 	 * Some keyboard/8042 combinations do not seem to work if the keyboard
 	 * is set to table 1; in fact, it would appear that some keyboards just
@@ -199,6 +201,7 @@ pckbd_set_xtscancode(pckbport_tag_t kbctag, pckbport_slot_t kbcslot,
 	 * and not bother with this.
 	 */
 	xt = pckbport_xt_translation(kbctag, kbcslot, 1);
+	printf("%s: pcbkbport_xt_translation returned %d\n", __func__, xt);
 	if (xt == 1) {
 		/* The 8042 is translating for us; use AT codes. */
 		cmd[0] = KBC_SETTABLE;
@@ -206,7 +209,7 @@ pckbd_set_xtscancode(pckbport_tag_t kbctag, pckbport_slot_t kbcslot,
 		res = pckbport_poll_cmd(kbctag, kbcslot, cmd, 2, 0, 0, 0);
 		if (res) {
 			u_char cmdb[1];
-			aprint_debug("%s: error setting scanset 2\n", __func__);
+			printf("%s: error setting scanset 2\n", __func__);
 			/*
 			 * XXX at least one keyboard is reported to lock up
 			 * if a "set table" is attempted, thus the "reset".
@@ -231,10 +234,11 @@ pckbd_set_xtscancode(pckbport_tag_t kbctag, pckbport_slot_t kbcslot,
 		cmd[1] = 1;
 		res = pckbport_poll_cmd(kbctag, kbcslot, cmd, 2, 0, 0, 0);
 		if (res)
-			aprint_debug("%s: error setting scanset 1\n", __func__);
+			printf("%s: error setting scanset 1\n", __func__);
 		if (id != NULL)
 			id->t_translating = 1;
 	}
+	printf("%s: res=%d\n", __func__, res);
 	return res;
 }
 
@@ -948,6 +952,8 @@ pckbd_init(struct pckbd_internal *t, pckbport_tag_t kbctag,
 
 	memset(t, 0, sizeof(struct pckbd_internal));
 
+	printf("%s: called, slot=%d, console=%d\n", __func__, kbcslot, console);
+
 	t->t_isconsole = console;
 	t->t_kbctag = kbctag;
 	t->t_kbcslot = kbcslot;
@@ -1099,7 +1105,10 @@ pckbd_cnattach(pckbport_tag_t kbctag, int kbcslot)
 	int res;
 	u_char cmd[1];
 
+	printf("%s: called; slot=%d\n", __func__, kbcslot);
+
 	res = pckbd_init(&pckbd_consdata, kbctag, kbcslot, 1);
+	printf("%s: pckbd_init returned %d\n", __func__, res);
 	/* We may allow the console to be attached if no keyboard is present */
 #if defined(PCKBD_CNATTACH_MAY_FAIL)
 	if (res)
@@ -1109,6 +1118,7 @@ pckbd_cnattach(pckbport_tag_t kbctag, int kbcslot)
 	/* Just to be sure. */
 	cmd[0] = KBC_ENABLE;
 	res = pckbport_poll_cmd(kbctag, kbcslot, cmd, 1, 0, 0, 0);
+	printf("%s: pckbd_poll_cmd returned %d\n", __func__, res);
 
 #if defined(PCKBD_CNATTACH_MAY_FAIL)
 	if (res)

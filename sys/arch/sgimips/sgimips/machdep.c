@@ -42,6 +42,7 @@ __KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.157 2026/04/30 03:12:39 adrian Exp $")
 #include "opt_cputype.h"
 #include "opt_mips_cache.h"
 #include "opt_modular.h"
+#include "opt_crime.h"
 
 #define __INTR_PRIVATE
 
@@ -659,6 +660,18 @@ mach_init(int argc, int32_t argv32[], uintptr_t magic, int32_t bip32)
 		physmem += btoc(size);
 
 	}
+
+#if 0 && defined(CRIME_ADD_HIGHMEM_PROBE)
+/* Add O2 memory above 256MB */
+	switch (mach_type) {
+	case MACH_SGI_IP32:
+		/* Note: this updates mem_clusters[] / mem_cluster_cnt */
+		crime_configure_memory();
+		break;
+	default:
+		break;
+	}
+#endif	/* CRIME_ADD_HIGHMEM_PROBE */
 
 	if (mem_cluster_cnt == 0)
 		panic("no free memory descriptors found");

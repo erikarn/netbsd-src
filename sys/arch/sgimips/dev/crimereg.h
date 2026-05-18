@@ -138,7 +138,11 @@
 #define CRIME_CPU_ERROR_ENA	0x50
 #define CRIME_VICE_ERROR_ADDR	0x58
 #define CRIME_MEM_CONTROL	0x0200
+/* These hold the configured SDRAM bank configuration */
 #define CRIME_MEM_BANK_CTRL0	0x0208
+#define  CRIME_MEM_BANK_ADDR	0x01f /* High bits of CPU addr match 29:25 */
+#define  CRIME_MEM_BANK_128MB	0x100 /* 128MB or 32MB bank */
+#define CRIME_MAX_BANKS		8
 #define CRIME_MEM_BANK_CTRL1	0x0218
 #define CRIME_MEM_BANK_CTRL2	0x0210
 #define CRIME_MEM_BANK_CTRL3	0x0228
@@ -146,6 +150,7 @@
 #define CRIME_MEM_BANK_CTRL5	0x0238
 #define CRIME_MEM_BANK_CTRL6	0x0230
 #define CRIME_MEM_BANK_CTRL7	0x0248
+
 #define CRIME_MEM_REFRESH_CNTR	0x0248
 #define CRIME_MEM_ERROR_STAT	0x0250
 #define CRIME_MEM_ERROR_ADDR	0x0258
@@ -154,3 +159,6 @@
 #define CRIME_MEM_ERROR_ECC_REPL 0x0270
 
 #define McGriff CRIME_DOG /* Baseball compatibility */
+
+#define CRIME_MEMORY_OFFSET	0x40000000      /* 1GB */
+#define CRIME_MEMORY_MASK	0x3fffffff

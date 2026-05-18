@@ -41,3 +41,4 @@ struct crime_softc {
 void crime_intr_mask(unsigned int);
 void crime_intr_unmask(unsigned int);
 void crime_reboot(void);
+void crime_configure_memory(void);

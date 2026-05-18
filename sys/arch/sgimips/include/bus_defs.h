@@ -39,6 +39,7 @@
  * Values for sgimips bus space tag, not to be used directly by MI code.
  * XXX these need special handling 
  */
+#define _MIPS_NEED_BUS_DMA_BOUNCE
 
 #include <mips/bus_space_defs.h>
 

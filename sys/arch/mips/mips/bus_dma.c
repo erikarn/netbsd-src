@@ -445,6 +445,8 @@ _bus_dmamap_load(bus_dma_tag_t t, bus_dmamap_t map, void *buf,
 #ifdef _MIPS_NEED_BUS_DMA_BOUNCE
 		struct mips_bus_dma_cookie *cookie = map->_dm_cookie;
 		if (cookie != NULL) {
+			printf("%s: called; bouncing=%d\n", __func__,
+			    !! (cookie->id_flags & _BUS_DMA_IS_BOUNCING));
 			if (cookie->id_flags & _BUS_DMA_IS_BOUNCING) {
 				STAT_INCR(bounced_unloads);
 				cookie->id_flags &= ~_BUS_DMA_IS_BOUNCING;
@@ -460,6 +462,9 @@ _bus_dmamap_load(bus_dma_tag_t t, bus_dmamap_t map, void *buf,
 	map->dm_mapsize = 0;
 	map->dm_nsegs = 0;
 	KASSERT(map->dm_maxsegsz <= map->_dm_maxmaxsegsz);
+
+	printf("%s: map=%p, buflen=%d, dm_size=%d\n", __func__,
+	    map, (int) buflen, (int) map->_dm_size);
 
 	if (buflen > map->_dm_size)
 		return EINVAL;
@@ -500,6 +505,14 @@ _bus_dmamap_load(bus_dma_tag_t t, bus_dmamap_t map, void *buf,
 	}
 #ifdef _MIPS_NEED_BUS_DMA_BOUNCE
 	struct mips_bus_dma_cookie *cookie = map->_dm_cookie;
+	printf("%s: failed, trying to load bounce buf\n", __func__);
+	if (cookie != NULL)
+		printf("%s: called; bouncing=%d, might_need_bounce=%d\n",
+		    __func__,
+		    !! (cookie->id_flags & _BUS_DMA_IS_BOUNCING),
+		    !! (cookie->id_flags & _BUS_DMA_MIGHT_NEED_BOUNCE)
+		    );
+
 	if (cookie != NULL &&
 	    (cookie->id_flags & _BUS_DMA_MIGHT_NEED_BOUNCE)) {
 		error = _bus_dma_load_bouncebuf(t, map, buf, buflen,

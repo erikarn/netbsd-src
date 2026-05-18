@@ -41,12 +41,14 @@
 __KERNEL_RCSID(0, "$NetBSD: crime.c,v 1.39 2021/04/26 17:07:17 mrg Exp $");
 
 #include "opt_ddb.h"
+#include "opt_crime.h"
 
 #include <sys/param.h>
 #include <sys/device.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/cpu.h>
+#include <sys/kcore.h>
 
 #include <machine/locore.h>
 #include <machine/autoconf.h>
@@ -66,6 +68,9 @@ __KERNEL_RCSID(0, "$NetBSD: crime.c,v 1.39 2021/04/26 17:07:17 mrg Exp $");
 #include "locators.h"
 
 #define DISABLE_CRIME_WATCHDOG
+
+extern phys_ram_seg_t mem_clusters[VM_PHYSSEG_MAX];
+extern int mem_cluster_cnt;
 
 static int	crime_match(device_t, struct cfdata *, void *);
 static void	crime_attach(device_t, device_t, void *);
@@ -350,4 +355,56 @@ crime_reboot(void)
 	    CRIME_CONTROL_HARD_RESET);
 	for (;;)
 		;
+}
+
+void
+crime_configure_memory(void)
+{
+	volatile uint64_t *bank_ctrl;
+	uint64_t ctrl, ctrl0;
+	uint64_t addr;
+	uint32_t size;
+	int i;
+
+	bank_ctrl = (void *) MIPS_PHYS_TO_KSEG1(CRIME_BASE + CRIME_MEM_BANK_CTRL0);
+
+	for (i = 0; i < CRIME_MAX_BANKS; i++) {
+		ctrl = bank_ctrl[i];
+		addr = ((ctrl & CRIME_MEM_BANK_ADDR) << 25UL);
+		size = (ctrl & CRIME_MEM_BANK_128MB) ? 128 : 32;
+
+		/* Note: empty banks are repeats of bank0 */
+		if (i == 0)
+			ctrl0 = ctrl;
+		else if (ctrl == ctrl0)
+			continue;
+
+		aprint_normal("%s: bank %d, ctrl=0x%jx, addr=0x%jx, size=%d MB\n",
+		    __func__,
+		    i,
+		    (uintmax_t) ctrl,
+		    (uintmax_t) addr,
+		    size);
+
+		/* ARCBIOS reports memory < 256MB, so skip that */
+		if (addr < (256 * 1024 * 1024))
+			continue;
+
+		/*
+		 * The CRIME ASIC maps memory in a bunch of places in the
+		 * physical memory map.  We must not access the same physical
+		 * memory from multiple locations.  So, leave memory
+		 * under 256MB (32 bit DMA'able too) to what ARCBIOS supplied
+		 * in the low memory map, and add memory above that,
+		 * starting at the mapping at CRIME_MEMORY_OFFSET.
+		 */
+		addr += CRIME_MEMORY_OFFSET;
+		size *= (1024 * 1024);
+
+		mem_clusters[mem_cluster_cnt].start = addr;
+		mem_clusters[mem_cluster_cnt].size = size;
+		mem_cluster_cnt++;
+
+		physmem += btoc(size);
+	}
 }

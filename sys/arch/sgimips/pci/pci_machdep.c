@@ -58,6 +58,13 @@ __KERNEL_RCSID(0, "$NetBSD: pci_machdep.c,v 1.25 2015/02/18 16:47:59 macallan Ex
 
 struct mips_bus_dma_tag pci_bus_dma_tag;
 
+static int
+pci_may_bounce(bus_dma_tag_t t, bus_dmamap_t map, int flags, int *cookieflagsp)
+{
+	*cookieflagsp |= _BUS_DMA_MIGHT_NEED_BOUNCE;
+	return (0);
+}
+
 void
 pci_attach_hook(device_t parent, device_t self, struct pcibus_attach_args *pba)
 {
@@ -67,6 +74,10 @@ pci_attach_hook(device_t parent, device_t self, struct pcibus_attach_args *pba)
 	 * established in sgimips_bus_dma_init().
 	 */
 	pci_bus_dma_tag = sgimips_default_bus_dma_tag;	/* struct copy */
+
+	pci_bus_dma_tag._bounce_alloc_hi = 0x10000000; /* Nothing above 256MB */
+	pci_bus_dma_tag._bounce_alloc_lo = 0x00800000; /* Not the low 8MB */
+	pci_bus_dma_tag._may_bounce = pci_may_bounce;
 
 	/* XXX */
 

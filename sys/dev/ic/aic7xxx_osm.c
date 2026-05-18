@@ -355,6 +355,8 @@ ahc_action(struct scsipi_channel *chan, scsipi_adapter_req_t req, void *arg)
 		 */
 		ahc_lock(ahc, &ss);
 		if ((scb = ahc_get_scb(ahc)) == NULL) {
+			printf("%s: in %s(): ahc_get_scb() returned NULL\n",
+			       ahc_name(ahc), __func__);
 			xs->error = XS_RESOURCE_SHORTAGE;
 			ahc_unlock(ahc, &ss);
 			scsipi_done(xs);
@@ -754,7 +756,7 @@ ahc_setup_data(struct ahc_softc *ahc, struct scsipi_xfer *xs,
 					((xs->xs_control & XS_CTL_DATA_IN) ?
 					 BUS_DMA_READ : BUS_DMA_WRITE));
 		if (error) {
-#ifdef AHC_DEBUG
+#if 1 || defined(AHC_DEBUG)
 			printf("%s: in ahc_setup_data(): bus_dmamap_load() "
 			       "= %d\n",
 			       ahc_name(ahc), error);

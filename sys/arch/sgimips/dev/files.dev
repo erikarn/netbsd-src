@@ -29,6 +29,7 @@ file	arch/sgimips/dev/dsclock.c	dsclock
 
 device	crime
 attach	crime at mainbus
+defflag	opt_crime.h			CRIME_ADD_HIGHMEM_PROBE
 file	arch/sgimips/dev/crime.c		crime needs-flag
 
 device	crmfb: wsemuldisplaydev, vcons, rasops8, rasops15, rasops16, rasops32, i2cbus, i2c_bitbang, ddc_read_edid, edid 
